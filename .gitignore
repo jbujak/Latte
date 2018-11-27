@@ -1,0 +1,5 @@
+latc_x86
+bin/
+src/bnfc/Makefile
+src/bnfc/TestLatte
+src/bnfc/*.[CHoly]
