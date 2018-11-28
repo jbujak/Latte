@@ -1,4 +1,5 @@
 latc_x86
+tags
 bin/
 src/bnfc/Makefile
 src/bnfc/TestLatte
