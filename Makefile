@@ -1,5 +1,6 @@
 SHELL=/bin/bash
 CXX=g++
+CXXFLAGS= -Wall -Wextra -std=c++17
 
 SRCDIR=src
 BINDIR=bin
@@ -9,30 +10,30 @@ OUT=latc_x86
 SRCS := $(shell find src/ -name '*.cpp' -printf "%f\n")
 OBJS := $(addprefix $(BINDIR)/,$(SRCS:%.cpp=%.o))
 
-latc: $(BINDIR) $(OBJS) $(BNFC_BINDIR)/Absyn.o
-	$(CXX) $(BINDIR)/*.o $(BNFC_BINDIR)/*.o -o $(OUT)
+$(OUT): $(BINDIR) $(OBJS) $(BNFC_BINDIR)/Absyn.o
+	$(CXX) $(CXXFLAGS) $(BINDIR)/*.o $(BNFC_BINDIR)/*.o -o $(OUT)
 
 $(BINDIR):
-	mkdir $(BINDIR)
-	mkdir $(BNFC_BINDIR)
+	-mkdir $(BINDIR) 2>/dev/null
+	-mkdir $(BNFC_BINDIR) 2>/dev/null
 
 $(BNFC_BINDIR)/Absyn.o: src/bnfc/Latte.cf
 	cd src/bnfc && bnfc -m --cpp Latte.cf && $(MAKE)
-	rm src/bnfc/Test.*
+	rm src/bnfc/Test.o
 	cp src/bnfc/*.o $(BNFC_BINDIR)/
 
-tags: src/*.c
+tags: src/*.cpp
 	ctags -R .
-	rm tags
 
 $(BINDIR)/%.o: $(SRCDIR)/%.cpp
-	$(CXX) -c $(SRCDIR)/$*.cpp -o $(BINDIR)/$*.o
+	$(CXX) $(CXXFLAGS) -c $(SRCDIR)/$*.cpp -o $(BINDIR)/$*.o
 
 .PHONY: clean
 clean:
 	-cd src/bnfc && $(MAKE) distclean
 	-rm -f $(OUT) 2>/dev/null
 	-rm -rf $(BINDIR) 2>/dev/null
+	-rm -rg tags 2>/dev/null
 
 .PHONY: test
 test:
