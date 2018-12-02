@@ -25,7 +25,8 @@ $(BNFC_BINDIR)/Absyn.o: src/bnfc/Latte.cf
 tags: src/*.cpp
 	ctags -R .
 
-$(BINDIR)/%.o: $(SRCDIR)/%.cpp
+.SECONDEXPANSION:
+$(BINDIR)/%.o: $(SRCDIR)/%.cpp $$(wildcard $$(SRCDIR)/%.h)
 	$(CXX) $(CXXFLAGS) -c $(SRCDIR)/$*.cpp -o $(BINDIR)/$*.o
 
 .PHONY: clean

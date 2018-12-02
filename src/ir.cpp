@@ -9,6 +9,8 @@
 
 /* ir */
 
+namespace ir {
+
 ir::ir(std::shared_ptr<Program> program) {
 }
 
@@ -93,3 +95,4 @@ std::string ir_call::to_string() const {
 	return res;
 }
 
+}

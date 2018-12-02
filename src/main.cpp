@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
 	try {
 		std::string filename = get_filename(argc, argv);
 		std::shared_ptr<Program> program = parse_file(filename);
-		ir ir(program);
+		ir::ir ir(program);
 		ir.add_function("fun");
 		std::cout << ir << std::endl;
 	} catch (const std::exception &e) {
@@ -31,3 +31,4 @@ static std::string get_filename(int argc, char *argv[]) {
 	}
 	return std::string(argv[1]);
 }
+

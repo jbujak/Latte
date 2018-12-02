@@ -8,6 +8,8 @@
 
 #include "bnfc/Absyn.H"
 
+namespace ir {
+
 class ir;
 class ir_function;
 class ir_command;
@@ -57,5 +59,7 @@ private:
 	std::string _name;
 	std::vector<ir_reg> _args;
 };
+
+}
 
 #endif //IR_H
