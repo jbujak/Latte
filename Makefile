@@ -1,22 +1,19 @@
 SHELL=/bin/bash
-GRAMMAR_FILES=ParLatte.hs,PrintLatte.hs,AbsLatte.hs,LexLatte.hs,ErrM.hs
+GRAMMAR_FILES=ParLatte.hs PrintLatte.hs AbsLatte.hs LexLatte.hs ErrM.hs
 OUT=latc_x86
 
 all: $(OUT)
 
-$(OUT): src/*.hs src/ParLatte.hs
-	cd src && ghc Latc.hs -o $(OUT)
+$(OUT): src/*.hs src/bnfc/ParLatte.hs
+	cd src && ghc -o $(OUT) -i $(addprefix bnfc/,$(GRAMMAR_FILES)) -i *.hs
 	mv src/$(OUT) .
 
-src/ParLatte.hs: src/bnfc/Latte.cf
+src/bnfc/*.hs: src/bnfc/Latte.cf
 	cd src/bnfc && bnfc -m --haskell Latte.cf && $(MAKE)
-	cp src/bnfc/{$(GRAMMAR_FILES)} ./src/
-	cd src/bnfc && make distclean
 
 tags: src/*.hs
 	hasktags .
 	rm TAGS
-	mv ctags tags
 
 .PHONY: clean
 clean:
@@ -25,6 +22,7 @@ clean:
 	-rm -f src/*.hi 2>/dev/null
 	-rm -f src/*.o 2>/dev/null
 	-rm -f $(OUT) 2>/dev/null
+	-rm -rf src/bin
 
 .PHONY: test
 test:

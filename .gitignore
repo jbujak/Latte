@@ -7,9 +7,6 @@ src/bnfc/TestLatte
 
 src/*.hi
 src/*.o
-src/bnfc/*.[ox]
-src/AbsLatte.hs
-src/ErrM.hs
-src/LexLatte.hs
-src/ParLatte.hs
-src/PrintLatte.hs
+
+src/bnfc/*
+!src/bnfc/Latte.cf

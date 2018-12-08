@@ -37,10 +37,10 @@ main = do
                 compile filename content
             else do
                 hPutStrLn stderr "Incorrect extension"
-                exitWith $ ExitFailure 255
+                failExit
         _ -> do
             usage
-            exitWith $ ExitFailure 255
+            failExit
 
 usage :: IO ()
 usage = hPutStrLn stderr $ "usage: ./latc_x86 filename.lat"
@@ -57,7 +57,10 @@ compile filename content = do
             where newFilename = (changeExtension filename "s")
         Left msg -> do
             hPutStrLn stderr msg
-            exitWith $ ExitFailure 255
+            failExit
+
+failExit :: IO ()
+failExit = exitWith $ ExitFailure 255
 
 changeExtension :: String -> String -> String
 changeExtension baseFilename newExtension =
@@ -87,86 +90,3 @@ emptyCompileState = CompileState {
 
 compileProgram :: Program -> Compile ()
 compileProgram (Prog stmts) = return ()
-
---compileStmt :: Stmt -> Compile ()
---compileStmt (SAss (Ident variable) expression) = do
---    result <- compileExp expression
---    modify $ \s -> s { vEnv = replaceElemKey variable result (vEnv s) }
---compileStmt (SExp expression) = do
---    result <- compileExp expression
---    generatePrintf result
---
---compileExp :: Exp -> Compile ExpValue
---compileExp (ExpAdd lhs rhs) = compileBinOp Add lhs rhs
---compileExp (ExpSub lhs rhs) = compileBinOp Sub lhs rhs
---compileExp (ExpMul lhs rhs) = compileBinOp Mul lhs rhs
---compileExp (ExpDiv lhs rhs) = compileBinOp Div lhs rhs
---compileExp (ExpVar (Ident variable)) = do
---    varReg <- variableRegister variable
---    return $ Register varReg
---compileExp (ExpLit n) = do
---    resultReg <- newRegister
---    generateBinOp Add resultReg (Value n) (Value 0)
---    return $ Register resultReg
---
---compileBinOp :: BinOp -> Exp -> Exp -> Compile ExpValue
---compileBinOp op lhs rhs = do
---    lhsValue <- compileExp lhs
---    rhsValue <- compileExp rhs
---    resultReg <- newRegister
---    generateBinOp op resultReg lhsValue rhsValue
---    return $ Register resultReg
---    
---
---newRegister :: Compile Integer
---newRegister = do
---    reg <- gets nextRegister
---    modify $ \s -> s { nextRegister = reg + 1 }
---    return reg
---
---variableRegister :: String -> Compile Integer
---variableRegister variable = do
---    vEnv <- gets vEnv
---    case lookup variable vEnv of
---        Just (Register reg) -> return reg
---        Nothing             -> reportError $ "compilation error: unkown variable " ++ variable
---
---generateBinOp :: BinOp -> Integer -> ExpValue -> ExpValue -> Compile ()
---generateBinOp op destReg lhs rhs = do
---    generateValue (Register destReg)
---    generateStr $ " = " ++ (getBinOp op) ++ " i32 "
---    generateValue lhs
---    generateStr ", "
---    generateValue rhs
---    generateStr "\n"
---    
---
---generatePrintf :: ExpValue -> Compile ()
---generatePrintf val = do
---    destReg <- newRegister
---    generateValue $ Register destReg
---    generateStr " = call i32 (i8*, ...) @printf(i8* getelementptr inbounds \
---                  \([4 x i8], [4 x i8]* @fmt, i32 0, i32 0), i32 "
---    generateValue val 
---    generateStr ")\n"
---
---
---generateValue :: ExpValue -> Compile ()
---generateValue (Value n) = generateStr $ show n
---generateValue (Register reg) = generateStr $ "%t" ++ (show reg)
---
---generateStr :: String -> Compile ()
---generateStr str = modify $ \s -> s {mainBody = (mainBody s) ++ str}
---
---getBinOp :: BinOp -> String
---getBinOp Add = "add"
---getBinOp Sub = "sub"
---getBinOp Mul = "mul"
---getBinOp Div = "sdiv"
---
---reportError :: String -> Compile a
---reportError msg = StateT { runStateT = \s -> Left msg }
---
---replaceElemKey :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
---replaceElemKey key val list = (key, val):(filter (\x -> fst x /= key) list)
-
