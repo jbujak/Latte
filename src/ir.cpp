@@ -12,6 +12,8 @@
 namespace ir {
 
 ir::ir(std::shared_ptr<Program> program) {
+	ir_generator generator(this);
+	program->accept(&generator);
 }
 
 std::ostream& operator<< (std::ostream& out, const ir& ir) {
@@ -21,11 +23,11 @@ std::ostream& operator<< (std::ostream& out, const ir& ir) {
 	return out;
 }
 
-void ir::add_function(const std::string &name) {
+void ir::add_function(const std::string &name, std::shared_ptr<ir_function> fun) {
 	if (_functions.find(name) != _functions.end()) {
-		throw std::runtime_error("Double function definition");		
+		throw std::runtime_error("Double function definition");
 	}
-	_functions[name] = std::shared_ptr<ir_function>(new ir_function(name));
+	_functions[name] = fun;
 }
 
 /* ir_function */
@@ -34,12 +36,15 @@ ir_function::ir_function(const std::string &name) :
 	_name(name),
 	_commands()
 {
-	_commands.push_back(std::shared_ptr<ir_command>(new ir_move(1, 2)));
-	_commands.push_back(std::shared_ptr<ir_command>(new ir_call("elo", {1, 2, 3})));
 }
 
+void ir_function::add_command(std::shared_ptr<ir_command> command) {
+	_commands.push_back(command);
+}
+
+
 std::ostream& operator<< (std::ostream& out, const ir_function& ir_function) {
-	out << ir_function._name << "\n";
+	out << ir_function._name << ":\n";
 	for (auto cmd : ir_function._commands) {
 		out << "  " << *cmd << "\n";
 	}
@@ -91,7 +96,7 @@ std::string ir_call::to_string() const {
 		res += std::to_string(reg);
 		first = false;
 	}
-	res += ")";
+	res += "})";
 	return res;
 }
 
