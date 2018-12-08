@@ -1,5 +1,6 @@
 latc_x86
 tags
+.ycm_extra_conf.py
 bin/
 src/bnfc/Makefile
 src/bnfc/TestLatte
