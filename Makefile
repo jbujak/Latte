@@ -26,7 +26,7 @@ tags: src/*.cpp
 	ctags -R .
 
 .SECONDEXPANSION:
-$(BINDIR)/%.o: $(SRCDIR)/%.cpp $$(wildcard $$(SRCDIR)/%.h)
+$(BINDIR)/%.o: $(SRCDIR)/%.cpp $(SRCDIR)/*.h
 	$(CXX) $(CXXFLAGS) -c $(SRCDIR)/$*.cpp -o $(BINDIR)/$*.o
 
 .PHONY: clean
