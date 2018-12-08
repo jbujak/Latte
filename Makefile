@@ -1,40 +1,30 @@
 SHELL=/bin/bash
-CXX=g++
-CXXFLAGS= -Wall -Wextra -std=c++17
-
-SRCDIR=src
-BINDIR=bin
-BNFC_BINDIR=$(BINDIR)/bnfc
+GRAMMAR_FILES=ParLatte.hs,PrintLatte.hs,AbsLatte.hs,LexLatte.hs,ErrM.hs
 OUT=latc_x86
 
-SRCS := $(shell find src/ -name '*.cpp' -printf "%f\n")
-OBJS := $(addprefix $(BINDIR)/,$(SRCS:%.cpp=%.o))
+all: $(OUT)
 
-$(OUT): $(BINDIR) $(OBJS) $(BNFC_BINDIR)/Absyn.o
-	$(CXX) $(CXXFLAGS) $(BINDIR)/*.o $(BNFC_BINDIR)/*.o -o $(OUT)
+$(OUT): src/*.hs src/ParLatte.hs
+	cd src && ghc Latc.hs -o $(OUT)
+	mv src/$(OUT) .
 
-$(BINDIR):
-	-mkdir $(BINDIR) 2>/dev/null
-	-mkdir $(BNFC_BINDIR) 2>/dev/null
+src/ParLatte.hs: src/bnfc/Latte.cf
+	cd src/bnfc && bnfc -m --haskell Latte.cf && $(MAKE)
+	cp src/bnfc/{$(GRAMMAR_FILES)} ./src/
+	cd src/bnfc && make distclean
 
-$(BNFC_BINDIR)/Absyn.o: src/bnfc/Latte.cf
-	cd src/bnfc && bnfc -m --cpp Latte.cf && $(MAKE)
-	rm src/bnfc/Test.o
-	cp src/bnfc/*.o $(BNFC_BINDIR)/
-
-tags: src/*.cpp
-	ctags -R .
-
-.SECONDEXPANSION:
-$(BINDIR)/%.o: $(SRCDIR)/%.cpp $(SRCDIR)/*.h
-	$(CXX) $(CXXFLAGS) -c $(SRCDIR)/$*.cpp -o $(BINDIR)/$*.o
+tags: src/*.hs
+	hasktags .
+	rm TAGS
+	mv ctags tags
 
 .PHONY: clean
 clean:
 	-cd src/bnfc && $(MAKE) distclean
+	-rm -f src/{$(GRAMMAR_FILES)} 2>/dev/null
+	-rm -f src/*.hi 2>/dev/null
+	-rm -f src/*.o 2>/dev/null
 	-rm -f $(OUT) 2>/dev/null
-	-rm -rf $(BINDIR) 2>/dev/null
-	-rm -rg tags 2>/dev/null
 
 .PHONY: test
 test:

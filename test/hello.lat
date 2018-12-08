@@ -1,6 +1,6 @@
 // Hello world 
 
 int main () {
-  printString("hello world") ;
+  printInt(42) ;
   return 0 ;
 }
