@@ -1,4 +1,9 @@
-module Ir ( Ir, generateIr) where
+module Ir ( Ir,
+            IrFunction(name, commands, locals),
+            IrCommand(LoadConst, Call, Return),
+            IrConst(ConstInt, ConstString),
+            Local,
+            generateIr) where
 
 import Control.Monad.State
 import Control.Applicative
@@ -13,25 +18,23 @@ import Data.List
 -- Types definition
 
 type Ir = [IrFunction]
-type Reg = Integer
+type Local = Integer
 
 data IrFunction = Function {
     name :: String,
     commands :: [IrCommand],
-    registers :: Integer
+    locals :: Integer
 } deriving (Show)
 
 data IrCommand =
-    Nop
-    | LoadConst Reg IrConst
-    | Call Reg String [Reg]
-    | Return (Maybe Reg)
+    LoadConst Local IrConst
+    | Call Local String [Local]
+    | Return (Maybe Local)
   deriving Show
 
 data IrConst =
     ConstInt Integer
-    | ConstBool Bool
-    | ConstString String
+    | ConstString Integer
   deriving Show
 
 data GenerateState = State {
@@ -57,7 +60,7 @@ emptyGenerateState = State {
 }
 
 
--- Ir generator implementation
+-- IR generator implementation
 
 generateProgram :: Program -> Generate ()
 generateProgram (Prog topdefs) = forM_ topdefs generateTopDef
@@ -76,8 +79,8 @@ generateStmt (Ass ident expr) = reportError "Not yet implemented: Ass"
 generateStmt (Incr ident) = reportError "Not yet implemented: Incr"
 generateStmt (Decr ident) = reportError "Not yet implemented: Decr"
 generateStmt (Ret expr) = do
-    reg <- generateExpr expr
-    printCommand (Return $ Just reg)
+    local <- generateExpr expr
+    printCommand (Return $ Just local)
 
 generateStmt VRet = reportError "Not yet implemented: VRet"
 generateStmt (Cond expr stmt) = reportError "Not yet implemented: Cond"
@@ -87,27 +90,27 @@ generateStmt (SExp expr) = do
     generateExpr expr
     return ()
 
-generateExpr :: Expr -> Generate Reg
+generateExpr :: Expr -> Generate Local
 generateExpr (EVar ident) = do
     reportError "Not yet implemented: EVar"
     return 1
 generateExpr (ELitInt integer) = do
-    reg <- newReg
-    printCommand $ LoadConst reg (ConstInt integer)
-    return reg
+    local <- newLocal
+    printCommand $ LoadConst local (ConstInt integer)
+    return local
 generateExpr (ELitTrue) = do
-    reg <- newReg
-    printCommand $ LoadConst reg (ConstBool True)
-    return reg
+    local <- newLocal
+    printCommand $ LoadConst local (ConstInt 1)
+    return local
 generateExpr (ELitFalse) = do
-    reg <- newReg
-    printCommand $ LoadConst reg (ConstBool False)
-    return reg
+    local <- newLocal
+    printCommand $ LoadConst local (ConstInt 0)
+    return local
 generateExpr (EApp (Ident funName) expr) = do
-    argsRegisters <- forM expr generateExpr
-    reg <- newReg
-    printCommand $ Call reg funName argsRegisters
-    return reg
+    argsLocals <- forM expr generateExpr
+    local <- newLocal
+    printCommand $ Call local funName argsLocals
+    return local
 generateExpr (EString string) = do
     reportError "Not yet implemented: EString"
     return 1
@@ -141,7 +144,7 @@ startFunction name = do
     modify $ \s -> s { currentFunction = Just (Function {
         name = name,
         commands = [],
-        registers = 0
+        locals = 0
     })}
 
 printCommand :: IrCommand -> Generate ()
@@ -169,16 +172,16 @@ endFunction = do
         currentFunction = Nothing
     }
 
-newReg :: Generate Reg
-newReg = do
+newLocal :: Generate Local
+newLocal = do
     function <- getCurrentFunction
-    let new_registers = registers function + 1
+    let newLocals = locals function + 1
     modify $ \s -> s {
         currentFunction = Just (function {
-            registers = new_registers
+            locals = newLocals
         })
     }
-    return new_registers
+    return newLocals
 
 getCurrentFunction :: Generate IrFunction
 getCurrentFunction = do

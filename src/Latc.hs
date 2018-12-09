@@ -16,6 +16,9 @@ import AbsLatte
 import Data.List
 
 import Ir
+import Asm
+
+import Debug.Trace --TODO remove
 
 data CompileState = CompileState {
     mainBody :: String,
@@ -51,10 +54,10 @@ compile :: String -> String -> IO ()
 compile filename content = do
     case tryCompile content of
         Right asm ->  do
-            hPutStrLn stderr asm
-            --writeFile newFilename asm
-            -- TODO compile asm
-            --system $ "llvm-as " ++ newFilename
+            -- TODO use newFilename
+            writeFile "out.s" asm
+            system "nasm -f elf64 out.s"
+            system "gcc out.o lib/runtime.o -o out"
             return ()
             where newFilename = (changeExtension filename "s")
         Left msg -> do
@@ -72,23 +75,11 @@ tryCompile :: String -> Either String String
 tryCompile content = do
     ast <- parse content
     ir  <- generateIr ast
-    llvmMainBody <- runCompilation $ compileProgram ast
-    return $ ppShow ir
+    asm <- generateAsm ir
+    --TODO remove printing IR
+    trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
 
 parse :: String -> Either String Program
 parse content = case pProgram $ myLexer content of
         Ok ast -> return ast
         Bad msg -> Left msg
-
-runCompilation :: Compile () -> Either String String
-runCompilation m = fmap (mainBody . snd) $ runStateT m emptyCompileState
-
-emptyCompileState :: CompileState
-emptyCompileState = CompileState {
-    mainBody = "",
-    nextRegister = 0,
-    vEnv = []
-}
-
-compileProgram :: Program -> Compile ()
-compileProgram (Prog stmts) = return ()
