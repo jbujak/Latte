@@ -4,6 +4,8 @@ import System.Environment
 import System.FilePath
 import System.Process
 
+import Text.Show.Pretty
+
 import Control.Monad.State
 import Control.Applicative
 
@@ -71,7 +73,7 @@ tryCompile content = do
     ast <- parse content
     ir  <- generateIr ast
     llvmMainBody <- runCompilation $ compileProgram ast
-    return $ show ir
+    return $ ppShow ir
 
 parse :: String -> Either String Program
 parse content = case pProgram $ myLexer content of
