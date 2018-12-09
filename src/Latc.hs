@@ -45,7 +45,7 @@ main = do
             failExit
 
 usage :: IO ()
-usage = hPutStrLn stderr $ "usage: ./latc_x86 filename.lat"
+usage = hPutStrLn stderr $ "usage: ./latc_x86_64 filename.lat"
 
 compile :: String -> String -> IO ()
 compile filename content = do

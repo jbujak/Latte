@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 GRAMMAR_FILES=ParLatte.hs PrintLatte.hs AbsLatte.hs LexLatte.hs ErrM.hs
-OUT=latc_x86
+OUT=latc_x86_64
 
 all: $(OUT)
 
