@@ -1,8 +1,9 @@
 module Ir ( Ir,
             IrFunction(name, commands, locals),
-            IrCommand(LoadConst, Call, Return),
+            IrCommand(LoadConst, Call, Return, BinOp),
             IrConst(ConstInt, ConstString),
             Local,
+            BinOpType(Add, Sub, Mul, Div, Mod),
             generateIr) where
 
 import Control.Monad.State
@@ -30,12 +31,15 @@ data IrCommand =
     LoadConst Local IrConst
     | Call Local String [Local]
     | Return (Maybe Local)
+    | BinOp Local Local Local BinOpType
   deriving Show
 
 data IrConst =
     ConstInt Integer
     | ConstString Integer
   deriving Show
+
+data BinOpType = Add | Sub | Mul | Div | Mod deriving Show
 
 data GenerateState = State {
     functions :: [IrFunction],
@@ -121,11 +125,9 @@ generateExpr (Not expr) = do
     reportError "Not yet implemented: Not"
     return 1
 generateExpr (EMul lhs mulop rhs) = do
-    reportError "Not yet implemented: EMul"
-    return 1
+    generateBinOpExpr lhs rhs (mulOpToBinOp mulop)
 generateExpr (EAdd lhs addop rhs) = do
-    reportError "Not yet implemented: EAdd"
-    return 1
+    generateBinOpExpr lhs rhs (addOpToBinOp addop)
 generateExpr (ERel lhs relop rhs) = do
     reportError "Not yet implemented: ERel"
     return 1
@@ -135,6 +137,14 @@ generateExpr (EAnd lhs rhs) = do
 generateExpr (EOr lhs rhs) = do
     reportError "Not yet implemented: "
     return 1
+
+generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
+generateBinOpExpr lhs rhs binOp = do
+    lhsLocal <- generateExpr lhs
+    rhsLocal <- generateExpr rhs
+    resLocal <- newLocal
+    printCommand $ BinOp resLocal lhsLocal rhsLocal binOp
+    return resLocal
 
 
 -- Auxiliary functions
@@ -190,6 +200,14 @@ getCurrentFunction = do
         Just currentFunction -> return currentFunction
         Nothing -> reportError "No current function"
 
+mulOpToBinOp :: MulOp -> BinOpType
+mulOpToBinOp AbsLatte.Times = Ir.Mul
+mulOpToBinOp AbsLatte.Div   = Ir.Div
+mulOpToBinOp AbsLatte.Mod   = Ir.Mod
+
+addOpToBinOp :: AddOp -> BinOpType
+addOpToBinOp Plus  = Add
+addOpToBinOp Minus = Sub
 
 reportError :: String -> Generate a
 reportError msg = StateT { runStateT = \s -> Left msg }

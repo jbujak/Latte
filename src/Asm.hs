@@ -46,10 +46,15 @@ generateAsmFromFunction function = do
 
 generateAsmFromCommand :: IrCommand -> Generate ()
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
-    printStr (loadIntToStack local value)
+    printStr $ loadIntToStack local value
 generateAsmFromCommand (Call local name args) = do
     generateLoadArgs args
-    printStr (callFun name)
+    printStr $ callFun name
+generateAsmFromCommand (BinOp result lhs rhs op) = do
+    printStr $ moveToReg "r8" lhs
+    printStr $ moveToReg "r9" rhs
+    printStr $ binOp "r8" "r9" op
+    printStr $ moveToLocal result "r8"
 
 generateAsmFromCommand cmd = return ()
 
@@ -96,7 +101,31 @@ callFun :: String -> String
 callFun funName = "    call " ++ funName ++ "\n"
 
 loadResult :: Local -> String
-loadResult local = "    mov " ++ getLocal local ++ ", rax"
+loadResult local = moveToLocal local "rax"
+
+moveToReg :: String -> Local -> String
+moveToReg reg local = "    mov " ++ reg ++ ", " ++ getLocal local ++ "\n"
+
+moveToLocal :: Local -> String -> String
+moveToLocal local reg = "    mov " ++ getLocal local ++ ", " ++ reg ++ "\n"
+
+zeroReg :: String -> String
+zeroReg reg = "    xor " ++ reg ++ ", " ++ reg ++ "\n"
+
+binOp :: String -> String -> BinOpType -> String
+binOp lhs rhs Add = "    add " ++ lhs ++ ", " ++ rhs ++ "\n"
+binOp lhs rhs Sub = "    sub " ++ lhs ++ ", " ++ rhs ++ "\n"
+binOp lhs rhs Mul = "    imul " ++ lhs ++ ", " ++ rhs ++ "\n"
+binOp lhs rhs Div =
+    zeroReg "rdx" ++
+    "    mov rax, " ++ lhs ++ "\n" ++
+    "    idiv " ++ rhs ++ "\n" ++
+    "    mov " ++ lhs ++ ", rax\n"
+binOp lhs rhs Mod =
+    zeroReg "rdx" ++
+    "    mov rax, " ++ lhs ++ "\n" ++
+    "    idiv " ++ rhs ++ "\n" ++
+    "    mov " ++ lhs ++ ", rdx\n"
 
 registerForArgument :: Integer -> Maybe String
 registerForArgument 0 = Just "rdi"
