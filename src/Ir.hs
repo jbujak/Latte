@@ -1,9 +1,9 @@
 module Ir ( Ir,
             IrFunction(name, commands, locals),
-            IrCommand(LoadConst, Call, Return, BinOp),
-            IrConst(ConstInt, ConstString),
-            Local,
-            BinOpType(Add, Sub, Mul, Div, Mod),
+            IrCommand(..),
+            IrConst(..),
+            BinOpType(..),
+            Local, Label,
             generateIr) where
 
 import Control.Monad.State
@@ -20,6 +20,7 @@ import Data.List
 
 type Ir = [IrFunction]
 type Local = Integer
+type Label = Integer
 
 data IrFunction = Function {
     name :: String,
@@ -29,9 +30,13 @@ data IrFunction = Function {
 
 data IrCommand =
     LoadConst Local IrConst
+    | Nop
     | Call Local String [Local]
     | Return (Maybe Local)
     | BinOp Local Local Local BinOpType
+    | Goto Label
+    | GotoIf Local Label
+    | PrintLabel Label
   deriving Show
 
 data IrConst =
@@ -43,7 +48,8 @@ data BinOpType = Add | Sub | Mul | Div | Mod deriving Show
 
 data GenerateState = State {
     functions :: [IrFunction],
-    currentFunction :: Maybe IrFunction
+    currentFunction :: Maybe IrFunction,
+    nextLabel :: Label
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -60,7 +66,8 @@ runGeneration m = fmap (functions . snd) $ runStateT m emptyGenerateState
 emptyGenerateState :: GenerateState
 emptyGenerateState = State {
     functions = [],
-    currentFunction = Nothing
+    currentFunction = Nothing,
+    nextLabel = 0
 }
 
 
@@ -76,7 +83,7 @@ generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
     endFunction
 
 generateStmt :: Stmt -> Generate ()
-generateStmt Empty = return ()
+generateStmt Empty = printCommand Nop
 generateStmt (BStmt (Blk stmts)) = forM_ stmts generateStmt
 generateStmt (Decl declType items) = reportError "Not yet implemented: Decl"
 generateStmt (Ass ident expr) = reportError "Not yet implemented: Ass"
@@ -87,8 +94,17 @@ generateStmt (Ret expr) = do
     printCommand (Return $ Just local)
 
 generateStmt VRet = reportError "Not yet implemented: VRet"
-generateStmt (Cond expr stmt) = reportError "Not yet implemented: Cond"
-generateStmt (CondElse expr stmtIf stmtElse) = reportError "Not yet implemented: CondElse"
+generateStmt (Cond expr stmt) = generateStmt (CondElse expr stmt Empty)
+generateStmt (CondElse expr stmtIf stmtElse) = do
+    localCond  <- generateExpr expr
+    labelIf    <- newLabel
+    labelEnd <- newLabel
+    printCommand $ GotoIf localCond labelIf
+    generateStmt stmtElse
+    printCommand $ Goto labelEnd
+    printCommand $ PrintLabel labelIf
+    generateStmt stmtIf
+    printCommand $ PrintLabel labelEnd
 generateStmt (While sxpr stmt) = reportError "Not yet implemented: While"
 generateStmt (SExp expr) = do
     generateExpr expr
@@ -192,6 +208,14 @@ newLocal = do
         })
     }
     return newLocals
+
+newLabel :: Generate Label
+newLabel = do
+    label <- gets nextLabel
+    modify $ \s -> s {
+        nextLabel = label + 1
+    }
+    return label
 
 getCurrentFunction :: Generate IrFunction
 getCurrentFunction = do

@@ -31,8 +31,6 @@ do
 		echo -n -e '\t'
 		echo $line
 	done
-	echo -n -e '\t'
-		cat err
 	fi
 	rm out.exe
 	rm out.o

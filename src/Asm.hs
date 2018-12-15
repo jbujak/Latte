@@ -45,6 +45,8 @@ generateAsmFromFunction function = do
     printStr functionEpilog
 
 generateAsmFromCommand :: IrCommand -> Generate ()
+generateAsmFromCommand Nop =
+    printStr $ nop
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
     printStr $ loadIntToStack local value
 generateAsmFromCommand (Call local name args) = do
@@ -55,6 +57,14 @@ generateAsmFromCommand (BinOp result lhs rhs op) = do
     printStr $ moveToReg "r9" rhs
     printStr $ binOp "r8" "r9" op
     printStr $ moveToLocal result "r8"
+generateAsmFromCommand (Goto label) =
+    printStr $ jmp label
+generateAsmFromCommand (GotoIf local label) = do
+    printStr $ moveToReg "r8" local
+    printStr $ cmp "r8" "0"
+    printStr $ jne label
+generateAsmFromCommand (PrintLabel label) =
+    printStr $ getLabel label
 
 generateAsmFromCommand cmd = return ()
 
@@ -82,8 +92,7 @@ functionProlog function = (name function) ++ ":\n\
                           where stackSize = alignStackSize (locals function * localSize)
 
 functionEpilog :: String
-functionEpilog = "\n\
-                 \.exit:\n\
+functionEpilog = "  .exit:\n\
                  \    mov rsp, rbp\n\
                  \    pop rbp\n\
                  \    ret\n"
@@ -133,8 +142,30 @@ registerForArgument 1 = Just "rsi"
 registerForArgument 2 = Just "rdx"
 registerForArgument 3 = Just "rcx"
 registerForArgument 4 = Just "r8"
-registerForArgument 5 = Just "r9"
---TODO more arguments
+registerForArgument 5 = Just "r9" --TODO more arguments
+
+labelName :: Label -> String
+labelName label = "label_" ++ show label
+
+
+-- Asm commands
+
+nop :: String
+nop = "    nop\n"
+
+cmp :: String -> String -> String
+cmp lhs rhs = "    cmp " ++ lhs ++ ", " ++ rhs ++ "\n"
+
+jmp :: Label -> String
+jmp label = "    jmp " ++ labelName label ++ "\n"
+
+jne :: Label -> String
+jne label = "    jne " ++ labelName label ++ "\n"
+
+getLabel :: Label -> String
+getLabel label = "  " ++ labelName label ++ ":\n"
+
+-- Auxiliary functions
 
 alignStackSize :: Integer -> Integer
 alignStackSize stackSize = 16 * ((stackSize + 15) `div` 16)
@@ -146,6 +177,5 @@ getLocal local = "[rbp-" ++ show offset ++ "]"
 localSize :: Integer
 localSize = 8
 
--- Auxiliary functions
 printStr :: String -> Generate ()
 printStr str = modify $ \s -> s { output = output s ++ str }

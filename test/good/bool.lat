@@ -1,0 +1,18 @@
+int main () {
+  if (true) {
+    printInt(1);
+  }
+  if (false) {
+    printInt(0);
+  }
+  if (true) {
+    printInt(2);
+  } else {
+    printInt(0);
+  }
+  if (false) {
+    printInt(0);
+  } else {
+    printInt(3);
+  }
+}
