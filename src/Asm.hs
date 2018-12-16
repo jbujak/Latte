@@ -69,8 +69,9 @@ generateAsmFromCommand (GotoIf local label) = do
     jne label
 generateAsmFromCommand (PrintLabel label) =
     printLabel label
-
-generateAsmFromCommand cmd = return ()
+generateAsmFromCommand (Assign dstLocal srcLocal) = do
+    mov (Reg R8) (Loc srcLocal)
+    mov (Loc dstLocal) (Reg R8)
 
 generateLoadArgs :: [Local] -> Generate()
 generateLoadArgs args = generateLoadArgsInner args 0 where

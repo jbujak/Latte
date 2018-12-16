@@ -25,7 +25,8 @@ type Label = Integer
 data IrFunction = Function {
     name :: String,
     commands :: [IrCommand],
-    locals :: Integer
+    locals :: Integer,
+    variables :: [(String, Local)]
 } deriving (Show)
 
 data IrCommand =
@@ -37,6 +38,7 @@ data IrCommand =
     | Goto Label
     | GotoIf Local Label
     | PrintLabel Label
+    | Assign Local Local
   deriving Show
 
 data IrConst =
@@ -44,10 +46,12 @@ data IrConst =
     | ConstString Integer
   deriving Show
 
+data UnOpType  = Incr | Decr
+
 data BinOpType = Add | Sub | Mul | Div | Mod |
                  Lt  | Lte | Gt  | Gte | Eq  | Neq |
                  And | Or
-                deriving Show
+               deriving Show
 
 data GenerateState = State {
     functions :: [IrFunction],
@@ -88,20 +92,22 @@ generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
 generateStmt :: Stmt -> Generate ()
 generateStmt Empty = printCommand Nop
 generateStmt (BStmt (Blk stmts)) = forM_ stmts generateStmt
-generateStmt (Decl declType items) = reportError "Not yet implemented: Decl"
-generateStmt (Ass ident expr) = reportError "Not yet implemented: Ass"
-generateStmt (Incr ident) = reportError "Not yet implemented: Incr"
-generateStmt (Decr ident) = reportError "Not yet implemented: Decr"
+generateStmt (Decl _ items) = forM_ items generateItem
+generateStmt (Ass (Ident name) expr) = do
+    local <- getVariable name
+    result <- generateExpr expr
+    printCommand $ Assign local result
+generateStmt (AbsLatte.Incr (Ident name)) = generateUnOpExpr name Ir.Incr
+generateStmt (AbsLatte.Decr (Ident name)) = generateUnOpExpr name Ir.Decr
 generateStmt (Ret expr) = do
     local <- generateExpr expr
     printCommand (Return $ Just local)
-
 generateStmt VRet = reportError "Not yet implemented: VRet"
 generateStmt (Cond expr stmt) = generateStmt (CondElse expr stmt Empty)
 generateStmt (CondElse expr stmtIf stmtElse) = do
     localCond  <- generateExpr expr
     labelIf    <- newLabel
-    labelEnd <- newLabel
+    labelEnd   <- newLabel
     printCommand $ GotoIf localCond labelIf
     generateStmt stmtElse
     printCommand $ Goto labelEnd
@@ -114,9 +120,11 @@ generateStmt (SExp expr) = do
     return ()
 
 generateExpr :: Expr -> Generate Local
-generateExpr (EVar ident) = do
-    reportError "Not yet implemented: EVar"
-    return 1
+generateExpr (EVar (Ident name)) = do
+    dstLocal <- newLocal
+    srcLocal <- getVariable name
+    printCommand $ Assign dstLocal srcLocal
+    return dstLocal
 generateExpr (ELitInt integer) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt integer)
@@ -152,6 +160,24 @@ generateExpr (EAnd lhs rhs) = do
 generateExpr (EOr lhs rhs) = do
     generateBinOpExpr lhs rhs Ir.Or
 
+generateItem :: Item -> Generate ()
+generateItem (NoInit (Ident name)) = do
+    newVariable name
+    return ()
+generateItem (Init (Ident name) expr) = do
+    varLocal  <- newVariable  name
+    result    <- generateExpr expr
+    printCommand $ Assign varLocal result
+
+generateUnOpExpr :: String -> UnOpType -> Generate ()
+generateUnOpExpr name op = do
+    local <- getVariable name
+    let binOp = case op of
+            Ir.Incr -> Ir.Add
+            Ir.Decr -> Ir.Sub
+    one <- generateExpr $ ELitInt 1
+    printCommand $ BinOp local local one binOp
+
 generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
 generateBinOpExpr lhs rhs binOp = do
     lhsLocal <- generateExpr lhs
@@ -168,7 +194,8 @@ startFunction name = do
     modify $ \s -> s { currentFunction = Just (Function {
         name = name,
         commands = [],
-        locals = 0
+        locals = 0,
+        variables = []
     })}
 
 printCommand :: IrCommand -> Generate ()
@@ -196,6 +223,17 @@ endFunction = do
         currentFunction = Nothing
     }
 
+newVariable :: String -> Generate Local
+newVariable name = do
+    function <- getCurrentFunction
+    local <- newLocal
+    modify $ \s -> s {
+        currentFunction = Just (function {
+            variables = (name, local):(variables function)
+        })
+    }
+    return local
+
 newLocal :: Generate Local
 newLocal = do
     function <- getCurrentFunction
@@ -214,6 +252,13 @@ newLabel = do
         nextLabel = label + 1
     }
     return label
+
+getVariable :: String -> Generate Local
+getVariable name = do
+    function <- getCurrentFunction
+    case lookup name $ variables function of
+        Nothing    -> reportError "Unknown variable"
+        Just local -> return local
 
 getCurrentFunction :: Generate IrFunction
 getCurrentFunction = do
