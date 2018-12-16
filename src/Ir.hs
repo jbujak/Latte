@@ -134,9 +134,7 @@ generateExpr (EApp (Ident funName) expr) = do
 generateExpr (EString string) = do
     reportError "Not yet implemented: EString"
     return 1
-generateExpr (Neg expr) = do
-    reportError "Not yet implemented: Neg"
-    return 1
+generateExpr (Neg expr) = generateBinOpExpr (ELitInt $ -1) expr Ir.Mul
 generateExpr (Not expr) = do
     reportError "Not yet implemented: Not"
     return 1

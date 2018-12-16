@@ -4,4 +4,5 @@ int main() {
 	printInt(2*3);
 	printInt(16/2);
 	printInt(210 % 100);
+	printInt(-12);
 }
