@@ -10,3 +10,6 @@ src/*.o
 
 src/bnfc/*
 !src/bnfc/Latte.cf
+
+.gdb_history
+peda-session-out.exe.txt
