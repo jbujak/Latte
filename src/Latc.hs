@@ -56,8 +56,8 @@ compile filename content = do
         Right asm ->  do
             -- TODO use newFilename
             writeFile "out.s" asm
-            system "nasm -f elf64 out.s"
-            system "gcc out.o lib/runtime.o -o out.exe"
+            system "nasm -f elf64 -F dwarf -g out.s"
+            system "gcc -g out.o lib/runtime.o -o out.exe"
             return ()
             where newFilename = (changeExtension filename "s")
         Left msg -> do
