@@ -16,6 +16,10 @@ data GenerateState = State {
 
 type Generate a = (StateT GenerateState (Either String)) a
 
+data Value = Reg Register | Loc Local | Int Integer
+
+data Register = RAX | RBX | RCX | RDX | RBP | RSP | RSI | RDI | 
+                R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
 
 -- Monad boilerplate
 
@@ -35,135 +39,104 @@ emptyGenerateState = State {
 
 generateAsmFromIr :: Ir -> Generate ()
 generateAsmFromIr ir = do
-    printStr programProlog
+    programProlog
     forM_ ir generateAsmFromFunction
 
 generateAsmFromFunction :: IrFunction -> Generate ()
 generateAsmFromFunction function = do
-    printStr $ functionProlog function
+    functionProlog function
     forM_ (commands function) generateAsmFromCommand
-    printStr functionEpilog
+    functionEpilog
 
 generateAsmFromCommand :: IrCommand -> Generate ()
 generateAsmFromCommand Nop =
-    printStr $ nop
+    nop
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
-    printStr $ loadIntToStack local value
+    mov (Loc local) (Int value)
 generateAsmFromCommand (Call local name args) = do
     generateLoadArgs args
-    printStr $ callFun name
+    call name
 generateAsmFromCommand (BinOp result lhs rhs op) = do
-    printStr $ moveToReg "r8" lhs
-    printStr $ moveToReg "r9" rhs
-    printStr $ binOp "r8" "r9" op
-    printStr $ moveToLocal result "r8"
+    mov (Reg R8) (Loc lhs)
+    mov (Reg R9) (Loc rhs)
+    binOp R8 R9 op
+    mov (Loc result) (Reg R8)
 generateAsmFromCommand (Goto label) =
-    printStr $ jmp label
+    jmp label
 generateAsmFromCommand (GotoIf local label) = do
-    printStr $ moveToReg "r8" local
-    printStr $ cmp "r8" "0"
-    printStr $ jne label
+    mov (Reg R8) (Loc local)
+    cmp R8 "0"
+    jne label
 generateAsmFromCommand (PrintLabel label) =
-    printStr $ getLabel label
+    printLabel label
 
 generateAsmFromCommand cmd = return ()
 
 generateLoadArgs :: [Local] -> Generate()
 generateLoadArgs args = generateLoadArgsInner args 0 where
     generateLoadArgsInner [] _ = return ()
-    generateLoadArgsInner (local:locals) argNo = do
-        printStr (loadArgument local argNo)
+    generateLoadArgsInner (local:locals) argNo = loadArgument local argNo
+
+
 
 -- Asm macros
 
-programProlog :: String
-programProlog = "extern printInt\n\
-                \extern printString\n\
-                \\n\
-                \global main\n\
-                \\n"
+programProlog :: Generate ()
+programProlog = do
+    extern "printInt"
+    extern "printString"
+    global "main"
 
-functionProlog :: IrFunction -> String
-functionProlog function = (name function) ++ ":\n\
-                          \    push rbp\n\
-                          \    mov rbp, rsp\n\
-                          \    sub rsp, " ++ (show stackSize) ++ "\n\
-                          \\n"
-                          where stackSize = alignStackSize (locals function * localSize)
+functionProlog :: IrFunction -> Generate ()
+functionProlog function = do
+    printStr $ (name function) ++ ":\n"
+    push RBP
+    mov (Reg RBP) (Reg RSP)
+    sub RSP (Int stackSize)
+    where stackSize = alignStackSize (locals function * localSize)
 
-functionEpilog :: String
-functionEpilog = "  .exit:\n\
-                 \    mov rsp, rbp\n\
-                 \    pop rbp\n\
-                 \    ret\n"
+functionEpilog :: Generate ()
+functionEpilog = do
+    asmLabel exitLabel
+    mov (Reg RSP) (Reg RBP)
+    pop RBP
+    ret
 
-loadIntToStack :: Local -> Integer -> String
-loadIntToStack local value =
-    "    mov QWORD " ++ getLocal local ++ ", " ++ show value ++ "\n"
-
-loadArgument :: Local -> Integer -> String
+loadArgument :: Local -> Integer -> Generate ()
 loadArgument local argNo = case registerForArgument argNo of
-    Just register -> "    mov " ++ register ++ ", " ++ getLocal local ++ "\n"
-    Nothing       -> "TODO"
+    Just register -> mov (Reg register) (Loc local)
 
-callFun :: String -> String
-callFun funName = "    call " ++ funName ++ "\n"
+binOp :: Register -> Register -> BinOpType -> Generate ()
+binOp lhs rhs Add = add  lhs (Reg rhs)
+binOp lhs rhs Sub = sub  lhs (Reg rhs)
+binOp lhs rhs Mul = imul lhs (Reg rhs)
+binOp lhs rhs Div = do
+    xor RDX RDX
+    mov (Reg RAX) (Reg lhs)
+    idiv rhs
+    mov (Reg lhs) (Reg RAX)
+binOp lhs rhs Mod = do
+    xor RDX RDX
+    mov (Reg RAX) (Reg lhs)
+    idiv rhs
+    mov (Reg lhs) (Reg RDX)
 
-loadResult :: Local -> String
-loadResult local = moveToLocal local "rax"
+registerForArgument :: Integer -> Maybe Register
+registerForArgument 0 = Just RDI
+registerForArgument 1 = Just RSI
+registerForArgument 2 = Just RDX
+registerForArgument 3 = Just RCX
+registerForArgument 4 = Just R8
+registerForArgument 5 = Just R9
+registerForArgument _ = Nothing --TODO
 
-moveToReg :: String -> Local -> String
-moveToReg reg local = "    mov " ++ reg ++ ", " ++ getLocal local ++ "\n"
-
-moveToLocal :: Local -> String -> String
-moveToLocal local reg = "    mov " ++ getLocal local ++ ", " ++ reg ++ "\n"
-
-zeroReg :: String -> String
-zeroReg reg = "    xor " ++ reg ++ ", " ++ reg ++ "\n"
-
-binOp :: String -> String -> BinOpType -> String
-binOp lhs rhs Add = "    add " ++ lhs ++ ", " ++ rhs ++ "\n"
-binOp lhs rhs Sub = "    sub " ++ lhs ++ ", " ++ rhs ++ "\n"
-binOp lhs rhs Mul = "    imul " ++ lhs ++ ", " ++ rhs ++ "\n"
-binOp lhs rhs Div =
-    zeroReg "rdx" ++
-    "    mov rax, " ++ lhs ++ "\n" ++
-    "    idiv " ++ rhs ++ "\n" ++
-    "    mov " ++ lhs ++ ", rax\n"
-binOp lhs rhs Mod =
-    zeroReg "rdx" ++
-    "    mov rax, " ++ lhs ++ "\n" ++
-    "    idiv " ++ rhs ++ "\n" ++
-    "    mov " ++ lhs ++ ", rdx\n"
-
-registerForArgument :: Integer -> Maybe String
-registerForArgument 0 = Just "rdi"
-registerForArgument 1 = Just "rsi"
-registerForArgument 2 = Just "rdx"
-registerForArgument 3 = Just "rcx"
-registerForArgument 4 = Just "r8"
-registerForArgument 5 = Just "r9" --TODO more arguments
+exitLabel :: String
+exitLabel = ".exit"
 
 labelName :: Label -> String
 labelName label = "label_" ++ show label
 
 
--- Asm commands
-
-nop :: String
-nop = "    nop\n"
-
-cmp :: String -> String -> String
-cmp lhs rhs = "    cmp " ++ lhs ++ ", " ++ rhs ++ "\n"
-
-jmp :: Label -> String
-jmp label = "    jmp " ++ labelName label ++ "\n"
-
-jne :: Label -> String
-jne label = "    jne " ++ labelName label ++ "\n"
-
-getLabel :: Label -> String
-getLabel label = "  " ++ labelName label ++ ":\n"
 
 -- Auxiliary functions
 
@@ -179,3 +152,87 @@ localSize = 8
 
 printStr :: String -> Generate ()
 printStr str = modify $ \s -> s { output = output s ++ str }
+
+
+
+-- Asm commands
+
+nop :: Generate ()
+nop = asmLine ["nop"]
+
+mov :: Value -> Value -> Generate ()
+mov (Reg dstReg) (Reg srcReg) = asmLine ["mov", show dstReg, ",", show srcReg]
+mov (Reg dstReg) (Loc srcLocal) = asmLine ["mov", show dstReg, ",", getLocal srcLocal]
+mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show srcReg]
+mov (Loc dstLocal) (Int srcInt) =
+    asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
+
+cmp :: Register -> String -> Generate ()
+cmp lhs rhs = asmLine ["cmp", show lhs, ", ", rhs]
+
+jmp :: Label -> Generate ()
+jmp label = asmLine ["jmp", labelName label]
+
+jne :: Label -> Generate ()
+jne label = asmLine ["jne", labelName label]
+
+xor :: Register -> Register -> Generate ()
+xor lhs rhs = asmLine ["xor", show lhs, ",", show rhs]
+
+idiv :: Register -> Generate ()
+idiv reg = asmLine ["idiv", show reg]
+
+push :: Register -> Generate ()
+push reg = asmLine ["push", show reg]
+
+pop :: Register -> Generate ()
+pop reg = asmLine ["pop", show reg]
+
+ret :: Generate ()
+ret = asmLine ["ret"]
+
+add :: Register -> Value -> Generate ()
+add lhs (Reg rhs) = asmLine ["add", show lhs, ", ", show rhs]
+
+sub :: Register -> Value -> Generate ()
+sub lhs (Reg rhs) = asmLine ["sub", show lhs, ", ", show rhs]
+sub lhs (Int int) = asmLine ["sub", show lhs, ", ", show int]
+
+imul :: Register -> Value -> Generate ()
+imul lhs (Reg rhs) = asmLine ["imul", show lhs, ", ", show rhs]
+
+call :: String -> Generate ()
+call funName = asmLine ["call", funName]
+
+extern :: String -> Generate ()
+extern name = printStr $ "extern " ++ name ++ "\n"
+
+global :: String -> Generate ()
+global name = printStr $ "global " ++ name ++ "\n"
+
+printLabel :: Label -> Generate ()
+printLabel label = asmLabel $ labelName label
+
+asmLabel :: String -> Generate ()
+asmLabel label = printStr $ "  " ++ label ++ ":\n"
+
+asmLine :: [String] -> Generate ()
+asmLine parts = printStr $ "    " ++ (intercalate " " parts) ++ "\n"
+
+instance Show Register where
+    show RAX = "rax"
+    show RBX = "rbx"
+    show RCX = "rcx"
+    show RDX = "rdx"
+    show RBP = "rbp"
+    show RSP = "rsp"
+    show RSI = "rsi"
+    show RDI = "rdi"
+    show R8  = "r8"
+    show R9  = "r9"
+    show R10 = "r10"
+    show R11 = "r11"
+    show R12 = "r12"
+    show R13 = "r13"
+    show R14 = "r14"
+    show R15 = "r15"
