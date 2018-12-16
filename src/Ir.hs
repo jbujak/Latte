@@ -50,7 +50,7 @@ data UnOpType  = Incr | Decr
 
 data BinOpType = Add | Sub | Mul | Div | Mod |
                  Lt  | Lte | Gt  | Gte | Eq  | Neq |
-                 And | Or
+                 And | Or  | Xor
                deriving Show
 
 data GenerateState = State {
@@ -114,7 +114,15 @@ generateStmt (CondElse expr stmtIf stmtElse) = do
     printCommand $ PrintLabel labelIf
     generateStmt stmtIf
     printCommand $ PrintLabel labelEnd
-generateStmt (While sxpr stmt) = reportError "Not yet implemented: While"
+generateStmt (While expr stmt) = do
+    condLabel <- newLabel
+    endLabel  <- newLabel
+    printCommand $ PrintLabel condLabel
+    breakWhileCond <- generateExpr (Not expr)
+    printCommand $ GotoIf breakWhileCond endLabel
+    generateStmt stmt
+    printCommand $ Goto condLabel
+    printCommand $ PrintLabel endLabel
 generateStmt (SExp expr) = do
     generateExpr expr
     return ()
@@ -147,8 +155,11 @@ generateExpr (EString string) = do
     return 1
 generateExpr (Neg expr) = generateBinOpExpr (ELitInt $ -1) expr Ir.Mul
 generateExpr (Not expr) = do
-    reportError "Not yet implemented: Not"
-    return 1
+    exprLocal <- generateExpr expr
+    resultLocal  <- newLocal
+    one <- generateExpr $ ELitInt 1
+    printCommand $ BinOp resultLocal exprLocal one Xor
+    return resultLocal
 generateExpr (EMul lhs mulop rhs) = do
     generateBinOpExpr lhs rhs (mulOpToBinOp mulop)
 generateExpr (EAdd lhs addop rhs) = do
@@ -165,8 +176,8 @@ generateItem (NoInit (Ident name)) = do
     newVariable name
     return ()
 generateItem (Init (Ident name) expr) = do
-    varLocal  <- newVariable  name
-    result    <- generateExpr expr
+    varLocal <- newVariable name
+    result   <- generateExpr expr
     printCommand $ Assign varLocal result
 
 generateUnOpExpr :: String -> UnOpType -> Generate ()
@@ -225,8 +236,8 @@ endFunction = do
 
 newVariable :: String -> Generate Local
 newVariable name = do
-    function <- getCurrentFunction
     local <- newLocal
+    function <- getCurrentFunction
     modify $ \s -> s {
         currentFunction = Just (function {
             variables = (name, local):(variables function)

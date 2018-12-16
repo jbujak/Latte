@@ -114,6 +114,7 @@ binOp lhs rhs Sub = sub  lhs (Reg rhs)
 binOp lhs rhs Mul = imul lhs (Reg rhs)
 binOp lhs rhs And = Asm.and  lhs (Reg rhs)
 binOp lhs rhs Or  = Asm.or   lhs (Reg rhs)
+binOp lhs rhs Xor = Asm.xor  lhs (Reg rhs)
 binOp lhs rhs Div = divResultFrom lhs rhs RAX
 binOp lhs rhs Mod = divResultFrom lhs rhs RDX
 binOp lhs rhs Eq  = compareAndReadFlag lhs rhs lhs zfBit False
@@ -155,8 +156,6 @@ exitLabel = ".exit"
 labelName :: Label -> String
 labelName label = "label_" ++ show label
 
-
-
 -- Auxiliary functions
 
 alignStackSize :: Integer -> Integer
@@ -196,10 +195,6 @@ jmp label = asmLine ["jmp", labelName label]
 jne :: Label -> Generate ()
 jne label = asmLine ["jne", labelName label]
 
-xor :: Register -> Value -> Generate ()
-xor lhs (Reg rhs) = asmLine ["xor", show lhs, ",", show rhs]
-xor lhs (Int rhs) = asmLine ["xor", show lhs, ",", show rhs]
-
 idiv :: Register -> Generate ()
 idiv reg = asmLine ["idiv", show reg]
 
@@ -213,14 +208,22 @@ ret :: Generate ()
 ret = asmLine ["ret"]
 
 add :: Register -> Value -> Generate ()
-add lhs (Reg rhs) = asmLine ["add", show lhs, ",", show rhs]
+add lhs rhs = asmBinOp "add" lhs rhs
 
 sub :: Register -> Value -> Generate ()
-sub lhs (Reg rhs) = asmLine ["sub", show lhs, ",", show rhs]
-sub lhs (Int rhs) = asmLine ["sub", show lhs, ",", show rhs]
+sub lhs rhs = asmBinOp "sub" lhs rhs
 
 imul :: Register -> Value -> Generate ()
-imul lhs (Reg rhs) = asmLine ["imul", show lhs, ",", show rhs]
+imul lhs rhs = asmBinOp "imul" lhs rhs
+
+and :: Register -> Value -> Generate ()
+and lhs rhs = asmBinOp "and" lhs rhs
+
+or :: Register -> Value -> Generate ()
+or lhs rhs = asmBinOp "or" lhs rhs
+
+xor :: Register -> Value -> Generate ()
+xor lhs rhs = asmBinOp "xor" lhs rhs
 
 call :: String -> Generate ()
 call funName = asmLine ["call", funName]
@@ -237,14 +240,6 @@ cfBit = 8
 neg :: Register -> Generate ()
 neg reg = asmLine ["neg", show reg]
 
-and :: Register -> Value -> Generate ()
-and lhs (Reg rhs) = asmLine ["and", show lhs, ",", show rhs]
-and lhs (Int rhs) = asmLine ["and", show lhs, ",", show rhs]
-
-or :: Register -> Value -> Generate ()
-or lhs (Reg rhs) = asmLine ["or", show lhs, ",", show rhs]
-or lhs (Int rhs) = asmLine ["or", show lhs, ",", show rhs]
-
 shr :: Register -> Integer -> Generate ()
 shr lhs rhs = asmLine ["shr", show lhs, ",", show rhs]
 
@@ -256,6 +251,10 @@ global name = printStr $ "global " ++ name ++ "\n"
 
 printLabel :: Label -> Generate ()
 printLabel label = asmLabel $ labelName label
+
+asmBinOp :: String -> Register -> Value -> Generate ()
+asmBinOp op lhs (Reg rhs) = asmLine [op, show lhs, ",", show rhs]
+asmBinOp op lhs (Int rhs) = asmLine [op, show lhs, ",", show rhs]
 
 asmLabel :: String -> Generate ()
 asmLabel label = printStr $ "  " ++ label ++ ":\n"
