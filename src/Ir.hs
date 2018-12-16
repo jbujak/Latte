@@ -44,7 +44,7 @@ data IrConst =
     | ConstString Integer
   deriving Show
 
-data BinOpType = Add | Sub | Mul | Div | Mod deriving Show
+data BinOpType = Add | Sub | Mul | Div | Mod | Lt | Lte | Gt | Gte | Eq | Neq deriving Show
 
 data GenerateState = State {
     functions :: [IrFunction],
@@ -143,8 +143,7 @@ generateExpr (EMul lhs mulop rhs) = do
 generateExpr (EAdd lhs addop rhs) = do
     generateBinOpExpr lhs rhs (addOpToBinOp addop)
 generateExpr (ERel lhs relop rhs) = do
-    reportError "Not yet implemented: ERel"
-    return 1
+    generateBinOpExpr lhs rhs (relOpToBinOp relop)
 generateExpr (EAnd lhs rhs) = do
     reportError "Not yet implemented: EAnd"
     return 1
@@ -230,6 +229,14 @@ mulOpToBinOp AbsLatte.Mod   = Ir.Mod
 addOpToBinOp :: AddOp -> BinOpType
 addOpToBinOp Plus  = Add
 addOpToBinOp Minus = Sub
+
+relOpToBinOp :: RelOp -> BinOpType
+relOpToBinOp LTH = Lt
+relOpToBinOp LE  = Lte
+relOpToBinOp GTH = Gt
+relOpToBinOp GE  = Gte
+relOpToBinOp EQU = Eq
+relOpToBinOp NE  = Neq
 
 reportError :: String -> Generate a
 reportError msg = StateT { runStateT = \s -> Left msg }

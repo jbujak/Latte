@@ -65,7 +65,7 @@ generateAsmFromCommand (Goto label) =
     jmp label
 generateAsmFromCommand (GotoIf local label) = do
     mov (Reg R8) (Loc local)
-    cmp R8 "0"
+    cmp R8 (Int 0)
     jne label
 generateAsmFromCommand (PrintLabel label) =
     printLabel label
@@ -106,20 +106,36 @@ loadArgument :: Local -> Integer -> Generate ()
 loadArgument local argNo = case registerForArgument argNo of
     Just register -> mov (Reg register) (Loc local)
 
+-- binOp semantics: lhs = lhs `op` rhs
 binOp :: Register -> Register -> BinOpType -> Generate ()
 binOp lhs rhs Add = add  lhs (Reg rhs)
 binOp lhs rhs Sub = sub  lhs (Reg rhs)
 binOp lhs rhs Mul = imul lhs (Reg rhs)
-binOp lhs rhs Div = do
-    xor RDX RDX
+binOp lhs rhs Div = divResultFrom lhs rhs RAX
+binOp lhs rhs Mod = divResultFrom lhs rhs RDX
+binOp lhs rhs Eq  = compareAndReadFlag lhs rhs lhs zfBit False
+binOp lhs rhs Neq = compareAndReadFlag lhs rhs lhs zfBit True
+binOp lhs rhs Lt  = compareAndReadFlag lhs rhs lhs cfBit False
+binOp lhs rhs Gte = compareAndReadFlag lhs rhs lhs cfBit True
+binOp lhs rhs Gt  = compareAndReadFlag rhs lhs lhs cfBit False
+binOp lhs rhs Lte = compareAndReadFlag rhs lhs lhs cfBit True
+
+divResultFrom :: Register -> Register -> Register -> Generate ()
+divResultFrom lhs rhs result = do
+    xor RDX (Reg RDX)
     mov (Reg RAX) (Reg lhs)
     idiv rhs
-    mov (Reg lhs) (Reg RAX)
-binOp lhs rhs Mod = do
-    xor RDX RDX
-    mov (Reg RAX) (Reg lhs)
-    idiv rhs
-    mov (Reg lhs) (Reg RDX)
+    mov (Reg lhs) (Reg result)
+
+compareAndReadFlag :: Register -> Register -> Register -> Integer -> Bool -> Generate ()
+compareAndReadFlag lhs rhs outReg flagBit negate = do
+    xor RAX (Reg RAX)
+    cmp lhs (Reg rhs)
+    lahf
+    shr RAX flagBit
+    Asm.and RAX (Int 0x1)
+    when negate $ xor RAX (Int 0x1)
+    mov (Reg outReg) (Reg RAX)
 
 registerForArgument :: Integer -> Maybe Register
 registerForArgument 0 = Just RDI
@@ -167,8 +183,9 @@ mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show s
 mov (Loc dstLocal) (Int srcInt) =
     asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
 
-cmp :: Register -> String -> Generate ()
-cmp lhs rhs = asmLine ["cmp", show lhs, ", ", rhs]
+cmp :: Register -> Value -> Generate ()
+cmp lhs (Int rhs) = asmLine ["cmp", show lhs, ", ", show rhs]
+cmp lhs (Reg rhs) = asmLine ["cmp", show lhs, ", ", show rhs]
 
 jmp :: Label -> Generate ()
 jmp label = asmLine ["jmp", labelName label]
@@ -176,8 +193,9 @@ jmp label = asmLine ["jmp", labelName label]
 jne :: Label -> Generate ()
 jne label = asmLine ["jne", labelName label]
 
-xor :: Register -> Register -> Generate ()
-xor lhs rhs = asmLine ["xor", show lhs, ",", show rhs]
+xor :: Register -> Value -> Generate ()
+xor lhs (Reg rhs) = asmLine ["xor", show lhs, ",", show rhs]
+xor lhs (Int rhs) = asmLine ["xor", show lhs, ",", show rhs]
 
 idiv :: Register -> Generate ()
 idiv reg = asmLine ["idiv", show reg]
@@ -192,17 +210,36 @@ ret :: Generate ()
 ret = asmLine ["ret"]
 
 add :: Register -> Value -> Generate ()
-add lhs (Reg rhs) = asmLine ["add", show lhs, ", ", show rhs]
+add lhs (Reg rhs) = asmLine ["add", show lhs, ",", show rhs]
 
 sub :: Register -> Value -> Generate ()
-sub lhs (Reg rhs) = asmLine ["sub", show lhs, ", ", show rhs]
-sub lhs (Int int) = asmLine ["sub", show lhs, ", ", show int]
+sub lhs (Reg rhs) = asmLine ["sub", show lhs, ",", show rhs]
+sub lhs (Int rhs) = asmLine ["sub", show lhs, ",", show rhs]
 
 imul :: Register -> Value -> Generate ()
-imul lhs (Reg rhs) = asmLine ["imul", show lhs, ", ", show rhs]
+imul lhs (Reg rhs) = asmLine ["imul", show lhs, ",", show rhs]
 
 call :: String -> Generate ()
 call funName = asmLine ["call", funName]
+
+lahf :: Generate ()
+lahf = asmLine ["lahf"]
+
+zfBit :: Integer
+zfBit = 14
+
+cfBit :: Integer
+cfBit = 8
+
+neg :: Register -> Generate ()
+neg reg = asmLine ["neg", show reg]
+
+and :: Register -> Value -> Generate ()
+and lhs (Reg rhs) = asmLine ["and", show lhs, ",", show rhs]
+and lhs (Int rhs) = asmLine ["and", show lhs, ",", show rhs]
+
+shr :: Register -> Integer -> Generate ()
+shr lhs rhs = asmLine ["shr", show lhs, ",", show rhs]
 
 extern :: String -> Generate ()
 extern name = printStr $ "extern " ++ name ++ "\n"
