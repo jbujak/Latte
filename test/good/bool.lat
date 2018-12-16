@@ -15,4 +15,30 @@ int main () {
   } else {
     printInt(3);
   }
+
+  if (false && false) {
+    printInt(0);
+  }
+  if (false && true) {
+    printInt(0);
+  }
+  if (true && false) {
+    printInt(0);
+  }
+  if (true && true) {
+    printInt(4);
+  }
+
+  if (false || false) {
+    printInt(0);
+  }
+  if (false || true) {
+    printInt(5);
+  }
+  if (true || false) {
+    printInt(6);
+  }
+  if (true || true) {
+    printInt(7);
+  }
 }

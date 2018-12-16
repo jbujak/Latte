@@ -111,6 +111,8 @@ binOp :: Register -> Register -> BinOpType -> Generate ()
 binOp lhs rhs Add = add  lhs (Reg rhs)
 binOp lhs rhs Sub = sub  lhs (Reg rhs)
 binOp lhs rhs Mul = imul lhs (Reg rhs)
+binOp lhs rhs And = Asm.and  lhs (Reg rhs)
+binOp lhs rhs Or  = Asm.or   lhs (Reg rhs)
 binOp lhs rhs Div = divResultFrom lhs rhs RAX
 binOp lhs rhs Mod = divResultFrom lhs rhs RDX
 binOp lhs rhs Eq  = compareAndReadFlag lhs rhs lhs zfBit False
@@ -237,6 +239,10 @@ neg reg = asmLine ["neg", show reg]
 and :: Register -> Value -> Generate ()
 and lhs (Reg rhs) = asmLine ["and", show lhs, ",", show rhs]
 and lhs (Int rhs) = asmLine ["and", show lhs, ",", show rhs]
+
+or :: Register -> Value -> Generate ()
+or lhs (Reg rhs) = asmLine ["or", show lhs, ",", show rhs]
+or lhs (Int rhs) = asmLine ["or", show lhs, ",", show rhs]
 
 shr :: Register -> Integer -> Generate ()
 shr lhs rhs = asmLine ["shr", show lhs, ",", show rhs]

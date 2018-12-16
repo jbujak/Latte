@@ -44,7 +44,10 @@ data IrConst =
     | ConstString Integer
   deriving Show
 
-data BinOpType = Add | Sub | Mul | Div | Mod | Lt | Lte | Gt | Gte | Eq | Neq deriving Show
+data BinOpType = Add | Sub | Mul | Div | Mod |
+                 Lt  | Lte | Gt  | Gte | Eq  | Neq |
+                 And | Or
+                deriving Show
 
 data GenerateState = State {
     functions :: [IrFunction],
@@ -145,11 +148,9 @@ generateExpr (EAdd lhs addop rhs) = do
 generateExpr (ERel lhs relop rhs) = do
     generateBinOpExpr lhs rhs (relOpToBinOp relop)
 generateExpr (EAnd lhs rhs) = do
-    reportError "Not yet implemented: EAnd"
-    return 1
+    generateBinOpExpr lhs rhs Ir.And
 generateExpr (EOr lhs rhs) = do
-    reportError "Not yet implemented: "
-    return 1
+    generateBinOpExpr lhs rhs Ir.Or
 
 generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
 generateBinOpExpr lhs rhs binOp = do
