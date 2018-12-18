@@ -33,6 +33,7 @@ data IrCommand =
     LoadConst Local IrConst
     | Nop
     | Call Local String [Local]
+    | LoadArg Local Integer
     | Return (Maybe Local)
     | BinOp Local Local Local BinOpType
     | Goto Label
@@ -56,7 +57,8 @@ data BinOpType = Add | Sub | Mul | Div | Mod |
 data GenerateState = State {
     functions :: [IrFunction],
     currentFunction :: Maybe IrFunction,
-    nextLabel :: Label
+    nextLabel :: Label,
+    loadedArgs :: Integer
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -74,7 +76,8 @@ emptyGenerateState :: GenerateState
 emptyGenerateState = State {
     functions = [],
     currentFunction = Nothing,
-    nextLabel = 0
+    nextLabel = 0,
+    loadedArgs = 0
 }
 
 
@@ -86,6 +89,7 @@ generateProgram (Prog topdefs) = forM_ topdefs generateTopDef
 generateTopDef :: TopDef -> Generate ()
 generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
     startFunction name
+    generateArgs args
     forM_ stmts generateStmt
     endFunction
 
@@ -179,6 +183,19 @@ generateItem (Init (Ident name) expr) = do
     varLocal <- newVariable name
     result   <- generateExpr expr
     printCommand $ Assign varLocal result
+
+generateArgs :: [Arg] -> Generate ()
+generateArgs args = do
+    modify $ \s -> s { loadedArgs = 0 }
+    forM_ args generateArg
+
+generateArg :: Arg -> Generate ()
+generateArg (Ar _ (Ident name)) = do
+    local <- newVariable name
+    argNo <- gets loadedArgs
+    modify $ \s -> s { loadedArgs = argNo + 1 }
+    printCommand $ LoadArg local argNo
+
 
 generateUnOpExpr :: String -> UnOpType -> Generate ()
 generateUnOpExpr name op = do

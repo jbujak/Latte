@@ -11,7 +11,8 @@ import Ir
 -- Types definition
 
 data GenerateState = State {
-    output :: String
+    output :: String,
+    currentFunction :: String
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -31,7 +32,8 @@ runGeneration m = fmap (output . snd) $ runStateT m emptyGenerateState
 
 emptyGenerateState :: GenerateState
 emptyGenerateState = State {
-    output = ""
+    output = "",
+    currentFunction = ""
 }
 
 
@@ -45,6 +47,7 @@ generateAsmFromIr ir = do
 generateAsmFromFunction :: IrFunction -> Generate ()
 generateAsmFromFunction function = do
     functionProlog function
+    modify $ \s -> s { currentFunction = name function }
     forM_ (commands function) generateAsmFromCommand
     functionEpilog
 
@@ -54,8 +57,15 @@ generateAsmFromCommand Nop =
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
     mov (Loc local) (Int value)
 generateAsmFromCommand (Call local name args) = do
-    generateLoadArgs args
+    generateLoadArgsToRegs args
     call name
+    mov (Loc local) (Reg RAX)
+generateAsmFromCommand (LoadArg local argNo) =
+    loadArgumentFromReg local argNo
+generateAsmFromCommand (Return (Just local)) = do
+    mov (Reg RAX) (Loc local)
+    exitLabelStr <- exitLabel
+    jmpSpecial exitLabelStr
 generateAsmFromCommand (BinOp result lhs rhs op) = do
     mov (Reg R8) (Loc lhs)
     mov (Reg R9) (Loc rhs)
@@ -73,11 +83,12 @@ generateAsmFromCommand (Assign dstLocal srcLocal) = do
     mov (Reg R8) (Loc srcLocal)
     mov (Loc dstLocal) (Reg R8)
 
-generateLoadArgs :: [Local] -> Generate()
-generateLoadArgs args = generateLoadArgsInner args 0 where
+generateLoadArgsToRegs :: [Local] -> Generate()
+generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
     generateLoadArgsInner [] _ = return ()
-    generateLoadArgsInner (local:locals) argNo = loadArgument local argNo
-
+    generateLoadArgsInner (local:locals) argNo = do
+        loadArgumentToReg local argNo
+        generateLoadArgsInner locals (argNo + 1)
 
 
 -- Asm macros
@@ -98,14 +109,19 @@ functionProlog function = do
 
 functionEpilog :: Generate ()
 functionEpilog = do
-    asmLabel exitLabel
+    exitLabelStr <- exitLabel
+    asmLabel exitLabelStr
     mov (Reg RSP) (Reg RBP)
     pop RBP
     ret
 
-loadArgument :: Local -> Integer -> Generate ()
-loadArgument local argNo = case registerForArgument argNo of
+loadArgumentToReg :: Local -> Integer -> Generate ()
+loadArgumentToReg local argNo = case registerForArgument argNo of
     Just register -> mov (Reg register) (Loc local)
+
+loadArgumentFromReg :: Local -> Integer -> Generate ()
+loadArgumentFromReg local argNo = case registerForArgument argNo of
+    Just register -> mov (Loc local) (Reg register)
 
 -- binOp semantics: lhs = lhs `op` rhs
 binOp :: Register -> Register -> BinOpType -> Generate ()
@@ -150,11 +166,15 @@ registerForArgument 4 = Just R8
 registerForArgument 5 = Just R9
 registerForArgument _ = Nothing --TODO
 
-exitLabel :: String
-exitLabel = ".exit"
+exitLabel :: Generate String
+exitLabel = do
+    funName <- gets currentFunction
+    return $ funName ++ "_exit"
 
-labelName :: Label -> String
-labelName label = "label_" ++ show label
+labelName :: Label -> Generate String
+labelName label = do
+    funName <- gets currentFunction
+    return $ funName ++ "_label_" ++ show label
 
 -- Auxiliary functions
 
@@ -190,10 +210,17 @@ cmp lhs (Int rhs) = asmLine ["cmp", show lhs, ", ", show rhs]
 cmp lhs (Reg rhs) = asmLine ["cmp", show lhs, ", ", show rhs]
 
 jmp :: Label -> Generate ()
-jmp label = asmLine ["jmp", labelName label]
+jmp label = do
+    labelStr <- labelName label
+    jmpSpecial labelStr
+
+jmpSpecial :: String -> Generate ()
+jmpSpecial labelStr = asmLine ["jmp", labelStr]
 
 jne :: Label -> Generate ()
-jne label = asmLine ["jne", labelName label]
+jne label = do
+    labelStr <- labelName label
+    asmLine ["jne", labelStr]
 
 idiv :: Register -> Generate ()
 idiv reg = asmLine ["idiv", show reg]
@@ -250,7 +277,9 @@ global :: String -> Generate ()
 global name = printStr $ "global " ++ name ++ "\n"
 
 printLabel :: Label -> Generate ()
-printLabel label = asmLabel $ labelName label
+printLabel label = do
+    labelStr <- labelName label
+    asmLabel labelStr
 
 asmBinOp :: String -> Register -> Value -> Generate ()
 asmBinOp op lhs (Reg rhs) = asmLine [op, show lhs, ",", show rhs]
