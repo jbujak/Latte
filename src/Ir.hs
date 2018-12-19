@@ -106,7 +106,7 @@ generateStmt (AbsLatte.Decr (Ident name)) = generateUnOpExpr name Ir.Decr
 generateStmt (Ret expr) = do
     local <- generateExpr expr
     printCommand (Return $ Just local)
-generateStmt VRet = reportError "Not yet implemented: VRet"
+generateStmt VRet = printCommand $ Return Nothing
 generateStmt (Cond expr stmt) = generateStmt (CondElse expr stmt Empty)
 generateStmt (CondElse expr stmtIf stmtElse) = do
     localCond  <- generateExpr expr

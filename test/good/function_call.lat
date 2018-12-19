@@ -1,7 +1,9 @@
 int main() {
     printInt(one());
     printInt(add(1, 2));
-    printInt(factorial(3));
+    printInt(factorial(3) - 1);
+    return_int_before_print();
+    return_void_before_print();
     return 0;
 }
 
@@ -18,4 +20,16 @@ int factorial(int n) {
         return 1;
     }
     return n * factorial(n-1);
+}
+
+int return_int_before_print() {
+    printInt(7);
+    return 1;
+    printInt(0);
+}
+
+void return_void_before_print() {
+    printInt(9);
+    return;
+    printInt(0);
 }

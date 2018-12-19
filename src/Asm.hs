@@ -66,6 +66,10 @@ generateAsmFromCommand (Return (Just local)) = do
     mov (Reg RAX) (Loc local)
     exitLabelStr <- exitLabel
     jmpSpecial exitLabelStr
+generateAsmFromCommand (Return Nothing) = do
+    mov (Reg RAX) (Int 0)
+    exitLabelStr <- exitLabel
+    jmpSpecial exitLabelStr
 generateAsmFromCommand (BinOp result lhs rhs op) = do
     mov (Reg R8) (Loc lhs)
     mov (Reg R9) (Loc rhs)
@@ -201,6 +205,7 @@ nop = asmLine ["nop"]
 mov :: Value -> Value -> Generate ()
 mov (Reg dstReg) (Reg srcReg) = asmLine ["mov", show dstReg, ",", show srcReg]
 mov (Reg dstReg) (Loc srcLocal) = asmLine ["mov", show dstReg, ",", getLocal srcLocal]
+mov (Reg dstReg) (Int srcInt) = asmLine ["mov", show dstReg, ",", show srcInt]
 mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show srcReg]
 mov (Loc dstLocal) (Int srcInt) =
     asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
