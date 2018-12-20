@@ -17,7 +17,12 @@ for file in $(ls $GOOD/*.lat)
 do
 	total=$((total+1))
 	./$EXE $file >/dev/null 2>&1
-	./out.exe >out 2>err
+	if [ -f $file.in ]
+	then
+		./out.exe <$file.in >out 2>err
+	else
+		./out.exe >out 2>err
+	fi
 	code=$?
 	if diff $file.out out 2>&1 >/dev/null
 	then

@@ -1,11 +1,15 @@
 extern printf
+extern scanf
 extern exit
+
 global printInt
 global printString
 global error
+global readInt
 
 section .rodata
-fmt_int    db "%d", 10, 0
+fmt_int    db "%lld", 10, 0
+fmt_int_sc db "%lld", 0
 fmt_string db "%s", 10, 0
 rt_error   db "runtime error", 10, 0
 
@@ -50,4 +54,19 @@ error:
     mov    rsp, rbp
     pop    rbp
     mov    rax, 0
+    ret
+
+readInt:
+    push	rbp
+    mov	rbp, rsp
+    sub	rsp, 16
+
+    lea	rax, [rbp-16]
+    mov	rsi, rax
+    mov	rdi, fmt_int_sc
+    call   scanf wrt ..plt
+    mov    rax, [rbp-16]
+
+    mov    rsp, rbp
+    pop    rbp
     ret

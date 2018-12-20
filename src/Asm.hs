@@ -128,6 +128,7 @@ externFunctions = do
     extern "printInt"
     extern "printString"
     extern "error"
+    extern "readInt"
 
 
 programData :: Ir -> Generate ()
