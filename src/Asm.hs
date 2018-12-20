@@ -101,8 +101,7 @@ generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
 
 programProlog :: Ir -> Generate ()
 programProlog ir = do
-    extern "printInt"
-    extern "printString"
+    externFunctions
     global "main"
     section ".rodata"
     programData ir
@@ -123,6 +122,13 @@ functionEpilog = do
     mov (Reg RSP) (Reg RBP)
     pop RBP
     ret
+
+externFunctions :: Generate()
+externFunctions = do
+    extern "printInt"
+    extern "printString"
+    extern "error"
+
 
 programData :: Ir -> Generate ()
 programData ir = programDataInner strings ((toInteger $ length strings)-1) where

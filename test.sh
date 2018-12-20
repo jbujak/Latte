@@ -19,18 +19,18 @@ do
 	./$EXE $file >/dev/null 2>&1
 	./out.exe >out 2>err
 	code=$?
-	expected_code=0
-	if diff $file.out out 2>&1 >/dev/null && [ $code = $expected_code ]
+	if diff $file.out out 2>&1 >/dev/null
 	then
 		echo -e $file ${GREEN}OK${RESET}
 	else
 		echo -e $file ${RED}ERROR${RESET}
 		failed=$((failed+1))
-	for line in $(cat out)
+
+	while read line
 	do
 		echo -n -e '\t'
 		echo $line
-	done
+	done <out
 	fi
 	rm out.exe
 	rm out.o
