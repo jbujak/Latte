@@ -1,0 +1,15 @@
+int main() {
+    printString("asdf");
+    printString(qwer());
+    string zxcv = "zxcv";
+    printArg(zxcv);
+    return 0;
+}
+
+string qwer() {
+    return "qwer";
+}
+
+void printArg(string str) {
+    printString(str);
+}

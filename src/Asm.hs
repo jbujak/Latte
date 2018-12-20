@@ -17,7 +17,7 @@ data GenerateState = State {
 
 type Generate a = (StateT GenerateState (Either String)) a
 
-data Value = Reg Register | Loc Local | Int Integer
+data Value = Reg Register | Loc Local | Int Integer | Ptr String
 
 data Register = RAX | RBX | RCX | RDX | RBP | RSP | RSI | RDI | 
                 R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
@@ -41,8 +41,8 @@ emptyGenerateState = State {
 
 generateAsmFromIr :: Ir -> Generate ()
 generateAsmFromIr ir = do
-    programProlog
-    forM_ ir generateAsmFromFunction
+    programProlog ir
+    forM_ (irFunctions ir) generateAsmFromFunction
 
 generateAsmFromFunction :: IrFunction -> Generate ()
 generateAsmFromFunction function = do
@@ -56,6 +56,8 @@ generateAsmFromCommand Nop =
     nop
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
     mov (Loc local) (Int value)
+generateAsmFromCommand (LoadConst local (ConstString stringNo)) =
+    mov (Loc local) (Ptr ("str_" ++ (show stringNo)))
 generateAsmFromCommand (Call local name args) = do
     generateLoadArgsToRegs args
     call name
@@ -97,11 +99,14 @@ generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
 
 -- Asm macros
 
-programProlog :: Generate ()
-programProlog = do
+programProlog :: Ir -> Generate ()
+programProlog ir = do
     extern "printInt"
     extern "printString"
     global "main"
+    section ".rodata"
+    programData ir
+    section ".text"
 
 functionProlog :: IrFunction -> Generate ()
 functionProlog function = do
@@ -118,6 +123,21 @@ functionEpilog = do
     mov (Reg RSP) (Reg RBP)
     pop RBP
     ret
+
+programData :: Ir -> Generate ()
+programData ir = programDataInner strings ((toInteger $ length strings)-1) where
+    strings = stringLiterals ir
+    programDataInner [] _ = return ()
+    programDataInner (str:strs) n = do
+        stringConst str n
+        programDataInner strs (n-1)
+
+stringConst :: String -> Integer -> Generate ()
+stringConst str strNo =
+    printStr $ "str_" ++ show strNo ++ " db \"" ++ str ++ "\", 0\n"
+
+section :: String -> Generate ()
+section name = printStr $ "section " ++ name ++ "\n"
 
 loadArgumentToReg :: Local -> Integer -> Generate ()
 loadArgumentToReg local argNo = case registerForArgument argNo of
@@ -209,6 +229,8 @@ mov (Reg dstReg) (Int srcInt) = asmLine ["mov", show dstReg, ",", show srcInt]
 mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show srcReg]
 mov (Loc dstLocal) (Int srcInt) =
     asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
+mov (Loc dstLocal) (Ptr ptrName) =
+    asmLine ["mov", "QWORD", getLocal dstLocal, ",", ptrName]
 
 cmp :: Register -> Value -> Generate ()
 cmp lhs (Int rhs) = asmLine ["cmp", show lhs, ", ", show rhs]

@@ -1,5 +1,5 @@
-module Ir ( Ir,
-            IrFunction(name, commands, locals),
+module Ir ( Ir(..),
+            IrFunction(..),
             IrCommand(..),
             IrConst(..),
             BinOpType(..),
@@ -18,7 +18,11 @@ import Data.List
 
 -- Types definition
 
-type Ir = [IrFunction]
+data Ir =  Ir {
+    irFunctions :: [IrFunction],
+    stringLiterals :: [String]
+} deriving Show
+
 type Local = Integer
 type Label = Integer
 
@@ -27,11 +31,11 @@ data IrFunction = Function {
     commands :: [IrCommand],
     locals :: Integer,
     variables :: [(String, Local)]
-} deriving (Show)
+} deriving Show
 
 data IrCommand =
-    LoadConst Local IrConst
-    | Nop
+      Nop
+    | LoadConst Local IrConst
     | Call Local String [Local]
     | LoadArg Local Integer
     | Return (Maybe Local)
@@ -43,7 +47,7 @@ data IrCommand =
   deriving Show
 
 data IrConst =
-    ConstInt Integer
+      ConstInt Integer
     | ConstString Integer
   deriving Show
 
@@ -58,7 +62,8 @@ data GenerateState = State {
     functions :: [IrFunction],
     currentFunction :: Maybe IrFunction,
     nextLabel :: Label,
-    loadedArgs :: Integer
+    loadedArgs :: Integer,
+    strings :: [String]
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -66,18 +71,25 @@ type Generate a = (StateT GenerateState (Either String)) a
 
 -- Monad boilerplate
 
-generateIr :: Program -> Either String [IrFunction]
+generateIr :: Program -> Either String Ir
 generateIr prog = runGeneration $ generateProgram prog
 
-runGeneration :: Generate () -> Either String [IrFunction]
-runGeneration m = fmap (functions . snd) $ runStateT m emptyGenerateState
+runGeneration :: Generate () -> Either String Ir
+runGeneration m = fmap (createIr . snd) $ runStateT m emptyGenerateState
+
+createIr :: GenerateState -> Ir
+createIr s = Ir {
+    irFunctions = functions s,
+    stringLiterals = strings s
+}
 
 emptyGenerateState :: GenerateState
 emptyGenerateState = State {
     functions = [],
     currentFunction = Nothing,
     nextLabel = 0,
-    loadedArgs = 0
+    loadedArgs = 0,
+    strings = []
 }
 
 
@@ -154,9 +166,7 @@ generateExpr (EApp (Ident funName) expr) = do
     local <- newLocal
     printCommand $ Call local funName argsLocals
     return local
-generateExpr (EString string) = do
-    reportError "Not yet implemented: EString"
-    return 1
+generateExpr (EString string) = newString string
 generateExpr (Neg expr) = generateBinOpExpr (ELitInt $ -1) expr Ir.Mul
 generateExpr (Not expr) = do
     exprLocal <- generateExpr expr
@@ -226,13 +236,13 @@ startFunction name = do
         variables = []
     })}
 
+-- printCommand adds command to the begining of list for performance reasons
+-- this will cause commands to be in reverse order during building function
 printCommand :: IrCommand -> Generate ()
 printCommand cmd = do
     currentFunction <- getCurrentFunction
     modify $ \s -> s {
         currentFunction = Just currentFunction {
-            -- printCommand adds command to the begining of list for performance
-            -- this will cause commands to be in reverse order while building function
             commands = cmd:(commands currentFunction)
         }
     }
@@ -260,6 +270,16 @@ newVariable name = do
             variables = (name, local):(variables function)
         })
     }
+    return local
+
+newString :: String -> Generate Integer
+newString str = do
+    local <- newLocal
+    strings <- gets strings
+    modify $ \s -> s {
+        strings = str:strings
+    }
+    printCommand $ LoadConst local (ConstString (toInteger $ length strings))
     return local
 
 newLocal :: Generate Local
