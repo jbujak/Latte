@@ -332,5 +332,5 @@ relOpToBinOp GE  = Gte
 relOpToBinOp EQU = Eq
 relOpToBinOp NE  = Neq
 
-reportError :: String -> Generate a
+reportError :: err -> StateT a (Either err) b
 reportError msg = StateT { runStateT = \s -> Left msg }

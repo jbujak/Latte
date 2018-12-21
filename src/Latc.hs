@@ -15,6 +15,7 @@ import ErrM
 import AbsLatte
 import Data.List
 
+import TypeChecker
 import Ir
 import Asm
 
@@ -74,6 +75,7 @@ changeExtension baseFilename newExtension =
 tryCompile :: String -> Either String String
 tryCompile content = do
     ast <- parse content
+    checkTypes ast
     ir  <- generateIr ast
     asm <- generateAsm ir
     --TODO remove printing IR

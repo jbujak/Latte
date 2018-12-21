@@ -100,6 +100,8 @@ Plus.      AddOp ::= "+" ;
 
 Minus.     AddOp ::= "-" ;
 
+internal   Concat. AddOp ::= "++" ;
+
 Times.     MulOp ::= "*" ;
 
 Div.       MulOp ::= "/" ;
