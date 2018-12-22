@@ -1,0 +1,5 @@
+int main() {
+	string str = "asdf";
+	boolean b = false;
+	str = b;
+}
