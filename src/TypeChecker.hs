@@ -65,8 +65,10 @@ checkStmt (Ass (Ident name) expr) = do
     varType <- getVariableType name
     expectType varType expr ("right hand side of assignment to " ++ name)
 
-checkStmt (AbsLatte.Incr (Ident name)) = return () --TODO
-checkStmt (AbsLatte.Decr (Ident name)) = return () --TODO
+checkStmt (AbsLatte.Incr var @ (Ident name)) =
+    expectType Int (EVar var) ("variable " ++ name)
+checkStmt (AbsLatte.Decr var @ (Ident name)) =
+    expectType Int (EVar var) ("variable " ++ name)
 checkStmt (Ret expr) = do
     currentFunctionName <- gets currentFunction
     currentFunction <- getFunctionType currentFunctionName
