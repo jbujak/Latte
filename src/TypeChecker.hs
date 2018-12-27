@@ -80,9 +80,16 @@ checkStmt VRet = do
     let (Fun retType _) = currentFunction
     when (retType /= Void) $
         reportError ("function " ++ currentFunctionName ++ " has to return value")
-checkStmt (Cond expr stmt) = return () --TODO
-checkStmt (CondElse expr stmtIf stmtElse) = return () --TODO
-checkStmt (While expr stmt) = return () --TODO
+checkStmt (Cond expr stmt) = do
+    expectType Bool expr "if condition"
+    checkStmt stmt
+checkStmt (CondElse expr stmtIf stmtElse) = do
+    expectType Bool expr "if condition"
+    checkStmt stmtIf
+    checkStmt stmtElse
+checkStmt (While expr stmt) = do
+    expectType Bool expr "while condition"
+    checkStmt stmt
 checkStmt (SExp expr) = checkExpr expr >> return ()
 
 checkDecl :: Type -> Item -> Check ()
