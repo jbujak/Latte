@@ -63,9 +63,7 @@ checkStmt (BStmt block) = checkBlock block
 checkStmt (Decl varType items) = forM_ items (checkDecl varType)
 checkStmt (Ass (Ident name) expr) = do
     varType <- getVariableType name
-    exprType <- checkExpr expr
-    when (varType /= exprType) $ reportError ("Incorrect type of variable " ++ name ++
-        ": exprected " ++ show exprType ++ ", got " ++ show varType)
+    expectType varType expr ("right hand side of assignment to " ++ name)
 
 checkStmt (AbsLatte.Incr (Ident name)) = return () --TODO
 checkStmt (AbsLatte.Decr (Ident name)) = return () --TODO

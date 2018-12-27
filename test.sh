@@ -54,7 +54,7 @@ do
 	if [ $code = $expected_code ]
 	then
 		echo -n -e $file ${GREEN}OK${RESET}
-	echo -n -e '\t'
+	echo -n -e '\n\t'
 		cat err
 	else
 		echo -e $file ${RED}ERROR: $code${RESET}
