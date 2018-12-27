@@ -74,7 +74,7 @@ checkStmt VRet = return () --TODO
 checkStmt (Cond expr stmt) = return () --TODO
 checkStmt (CondElse expr stmtIf stmtElse) = return () --TODO
 checkStmt (While expr stmt) = return () --TODO
-checkStmt (SExp expr) = return () --TODO
+checkStmt (SExp expr) = checkExpr expr >> return ()
 
 checkDecl :: Type -> Item -> Check ()
 checkDecl varType (NoInit (Ident name)) = addVariable name varType
@@ -92,42 +92,33 @@ checkExpr (EApp (Ident funName) args) = do
     case funType of
         -- TODO check args
         Fun retType _ -> return retType
-        _             -> reportError "Internal compiler error"
 checkExpr (EString string) = return Str
 checkExpr (Neg expr) = do
-    exprType <- checkExpr expr
-    when (exprType /= Bool) $ reportError "Expected type: boolean"
-    return Bool
+    expectType Int expr "negation argument"
+    return Int
 checkExpr (Not expr) = do
-    exprType <- checkExpr expr
-    when (exprType /= Bool) $ reportError "Expected type: boolean"
+    expectType Bool expr "negation argument"
     return Bool
 checkExpr (EMul lhs mulop rhs) = do
-    lhsType <- checkExpr lhs
-    rhsType <- checkExpr rhs
-    when (lhsType /= Int || rhsType /= Int) $ reportError "Expected type: int"
+    expectType Int lhs "left multiplication operand"
+    expectType Int rhs "right multiplication operand"
     return Int
 checkExpr (EAdd lhs addop rhs) = do
-    lhsType <- checkExpr lhs
-    rhsType <- checkExpr rhs
-    when (lhsType /= Int || rhsType /= Int) $ reportError "Expected type: int"
+    expectType Int lhs "left addition operand"
+    expectType Int rhs "right addition operand"
     return Int
 checkExpr (ERel lhs relop rhs) = do
-    lhsType <- checkExpr lhs
-    rhsType <- checkExpr rhs
-    when (lhsType /= Int || rhsType /= Int) $ reportError "Expected type: int"
-    return Int
+    expectType Int lhs "left compare operand"
+    expectType Int rhs "right compare operand"
+    return Bool
 checkExpr (EAnd lhs rhs) = do
-    lhsType <- checkExpr lhs
-    rhsType <- checkExpr rhs
-    when (lhsType /= Bool || rhsType /= Bool) $ reportError "Expected type: boolean"
+    expectType Bool lhs "left and operand"
+    expectType Bool rhs "right and operand"
     return Bool
 checkExpr (EOr lhs rhs) = do
-    lhsType <- checkExpr lhs
-    rhsType <- checkExpr rhs
-    when (lhsType /= Bool || rhsType /= Bool) $ reportError "Expected type: boolean"
+    expectType Bool lhs "left and operand"
+    expectType Bool rhs "right and operand"
     return Bool
-
 
 beginFunction :: String -> Check ()
 beginFunction name = modify $ \s -> s { currentFunction = name }
@@ -152,10 +143,11 @@ getFunctionType name = do
                 Nothing      -> reportError $ "Unkown function " ++ name
 
 getBuiltinFunctionType :: String -> Maybe Type
-getBuiltinFunctionType "printInt" = return $ Fun Void [Int]
-getBuiltinFunctionType "printString" = return $ Fun Void [Str]
-getBuiltinFunctionType "readInt" = return $ Fun Int []
-getBuiltinFunctionType "error" = return $ Fun Void []
+getBuiltinFunctionType "printInt" = Just $ Fun Void [Int]
+getBuiltinFunctionType "printString" = Just $ Fun Void [Str]
+getBuiltinFunctionType "readInt" = Just $ Fun Int []
+getBuiltinFunctionType "error" = Just $ Fun Void []
+getBuiltinFunctionType _ = Nothing
 
 addArg :: Arg -> Check ()
 addArg (Ar argType (Ident name)) = addVariable name argType
@@ -173,6 +165,14 @@ getVariableType name = do
     case lookup name variables of
         Just varType -> return varType
         Nothing      -> reportError $ "Unkown variable " ++ name
+
+expectType :: Type -> Expr -> String -> Check ()
+expectType expectedType expr what = do
+    actualType <- checkExpr expr
+    when (expectedType /= actualType) $ reportError ("Incorrect type of " ++ what ++
+        ": expected " ++ (show expectedType) ++ ", got " ++ (show actualType))
+    return ()
+
 
 reportError :: err -> StateT a (Either err) b
 reportError msg = StateT { runStateT = \s -> Left msg }
