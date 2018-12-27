@@ -106,8 +106,13 @@ checkExpr (ELitFalse) = return Bool
 checkExpr (EApp (Ident funName) args) = do
     funType <- getFunctionType funName
     case funType of
-        -- TODO check args
-        Fun retType _ -> return retType
+        Fun retType funArgTypes -> do
+            when ((length args) /= (length funArgTypes)) $
+                reportError ("Incorrect number of arguments for function " ++ funName)
+            argTypes <- forM args checkExpr
+            when (argTypes /= funArgTypes) $ reportError
+                ("Argument types for function " ++ funName ++ " does not match")
+            return retType
 checkExpr (EString string) = return Str
 checkExpr (Neg expr) = do
     expectType Int expr "negation argument"
