@@ -67,8 +67,17 @@ checkStmt (Ass (Ident name) expr) = do
 
 checkStmt (AbsLatte.Incr (Ident name)) = return () --TODO
 checkStmt (AbsLatte.Decr (Ident name)) = return () --TODO
-checkStmt (Ret expr) = return () --TODO
-checkStmt VRet = return () --TODO
+checkStmt (Ret expr) = do
+    currentFunctionName <- gets currentFunction
+    currentFunction <- getFunctionType currentFunctionName
+    let (Fun retType _) = currentFunction
+    expectType retType expr "return value"
+checkStmt VRet = do
+    currentFunctionName <- gets currentFunction
+    currentFunction <- getFunctionType currentFunctionName
+    let (Fun retType _) = currentFunction
+    when (retType /= Void) $
+        reportError ("function " ++ currentFunctionName ++ " has to return value")
 checkStmt (Cond expr stmt) = return () --TODO
 checkStmt (CondElse expr stmtIf stmtElse) = return () --TODO
 checkStmt (While expr stmt) = return () --TODO
