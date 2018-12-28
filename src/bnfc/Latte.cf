@@ -58,37 +58,52 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
-internal   Fun. Type ::= Type "(" [Type] ")" ;
-
 separator  Type "," ;
+
+-- Type checker types --------------------------------------
+
+TcNone.      TcType ::= "" ;
+
+internal TcInt.       TcType ::= "int" ;
+
+internal TcStr.       TcType ::= "string" ;
+
+internal TcBool.      TcType ::= "boolean" ;
+
+internal TcVoid.      TcType ::= "void" ;
+
+internal TcFun.       TcType ::= TcType "(" [TcType] ")" ;
+
+separator  TcType "," ;
+
 
 -- Expressions ---------------------------------------------
 
-EVar.      Expr6 ::= Ident ;
+EVar.      Expr6 ::= Ident TcType ;
 
-ELitInt.   Expr6 ::= Integer ;
+ELitInt.   Expr6 ::= Integer TcType ;
 
-ELitTrue.  Expr6 ::= "true" ;
+ELitTrue.  Expr6 ::= "true" TcType ;
 
-ELitFalse. Expr6 ::= "false" ;
+ELitFalse. Expr6 ::= "false" TcType ;
 
-EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+EApp.      Expr6 ::= Ident "(" [Expr] ")" TcType ;
 
-EString.   Expr6 ::= String ;
+EString.   Expr6 ::= String TcType ;
 
-Neg.       Expr5 ::= "-" Expr6 ;
+Neg.       Expr5 ::= "-" Expr6 TcType ;
 
-Not.       Expr5 ::= "!" Expr6 ;
+Not.       Expr5 ::= "!" Expr6 TcType ;
 
-EMul.      Expr4 ::= Expr4 MulOp Expr5 ;
+EMul.      Expr4 ::= Expr4 MulOp Expr5 TcType ;
 
-EAdd.      Expr3 ::= Expr3 AddOp Expr4 ;
+EAdd.      Expr3 ::= Expr3 AddOp Expr4 TcType ;
 
-ERel.      Expr2 ::= Expr2 RelOp Expr3 ;
+ERel.      Expr2 ::= Expr2 RelOp Expr3 TcType ;
 
-EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
+EAnd.      Expr1 ::= Expr2 "&&" Expr1 TcType ;
 
-EOr.       Expr ::= Expr1 "||" Expr ;
+EOr.       Expr ::= Expr1 "||" Expr TcType ;
 
 coercions  Expr 6 ;
 
@@ -99,8 +114,6 @@ separator  Expr "," ;
 Plus.      AddOp ::= "+" ;
 
 Minus.     AddOp ::= "-" ;
-
-internal   Concat. AddOp ::= "++" ;
 
 Times.     MulOp ::= "*" ;
 

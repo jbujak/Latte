@@ -134,7 +134,7 @@ generateStmt (While expr stmt) = do
     condLabel <- newLabel
     endLabel  <- newLabel
     printCommand $ PrintLabel condLabel
-    breakWhileCond <- generateExpr (Not expr)
+    breakWhileCond <- generateExpr (Not expr TcBool)
     printCommand $ GotoIf breakWhileCond endLabel
     generateStmt stmt
     printCommand $ Goto condLabel
@@ -144,45 +144,45 @@ generateStmt (SExp expr) = do
     return ()
 
 generateExpr :: Expr -> Generate Local
-generateExpr (EVar (Ident name)) = do
+generateExpr (EVar (Ident name) _) = do
     dstLocal <- newLocal
     srcLocal <- getVariable name
     printCommand $ Assign dstLocal srcLocal
     return dstLocal
-generateExpr (ELitInt integer) = do
+generateExpr (ELitInt integer _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt integer)
     return local
-generateExpr (ELitTrue) = do
+generateExpr (ELitTrue _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt 1)
     return local
-generateExpr (ELitFalse) = do
+generateExpr (ELitFalse _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt 0)
     return local
-generateExpr (EApp (Ident funName) expr) = do
+generateExpr (EApp (Ident funName) expr _) = do
     argsLocals <- forM expr generateExpr
     local <- newLocal
     printCommand $ Call local funName argsLocals
     return local
-generateExpr (EString string) = newString string
-generateExpr (Neg expr) = generateBinOpExpr (ELitInt $ -1) expr Ir.Mul
-generateExpr (Not expr) = do
+generateExpr (EString string _) = newString string
+generateExpr (Neg expr _) = generateBinOpExpr (ELitInt (-1) TcInt) expr Ir.Mul
+generateExpr (Not expr _) = do
     exprLocal <- generateExpr expr
     resultLocal  <- newLocal
-    one <- generateExpr $ ELitInt 1
+    one <- generateExpr $ ELitInt 1 TcInt
     printCommand $ BinOp resultLocal exprLocal one Xor
     return resultLocal
-generateExpr (EMul lhs mulop rhs) = do
+generateExpr (EMul lhs mulop rhs _) = do
     generateBinOpExpr lhs rhs (mulOpToBinOp mulop)
-generateExpr (EAdd lhs addop rhs) = do
+generateExpr (EAdd lhs addop rhs _) = do
     generateBinOpExpr lhs rhs (addOpToBinOp addop)
-generateExpr (ERel lhs relop rhs) = do
+generateExpr (ERel lhs relop rhs _) = do
     generateBinOpExpr lhs rhs (relOpToBinOp relop)
-generateExpr (EAnd lhs rhs) = do
+generateExpr (EAnd lhs rhs _) = do
     generateBinOpExpr lhs rhs Ir.And
-generateExpr (EOr lhs rhs) = do
+generateExpr (EOr lhs rhs _) = do
     generateBinOpExpr lhs rhs Ir.Or
 
 generateItem :: Item -> Generate ()
@@ -213,7 +213,7 @@ generateUnOpExpr name op = do
     let binOp = case op of
             Ir.Incr -> Ir.Add
             Ir.Decr -> Ir.Sub
-    one <- generateExpr $ ELitInt 1
+    one <- generateExpr $ ELitInt 1 TcInt
     printCommand $ BinOp local local one binOp
 
 generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
