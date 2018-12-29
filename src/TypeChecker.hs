@@ -19,11 +19,11 @@ type Check a = (StateT CheckState (Either String)) a
 
 -- Monad boilerplate
 
-checkTypes :: Program -> Either String ()
+checkTypes :: Program -> Either String Program
 checkTypes prog = runChecker $ checkProgram prog
 
-runChecker :: Check () -> Either String ()
-runChecker m = fmap (const ()) $ runStateT m emptyCheckState
+runChecker :: Check Program -> Either String Program
+runChecker m = fmap (fst) $ runStateT m emptyCheckState
 
 emptyCheckState :: CheckState
 emptyCheckState = State {
@@ -35,111 +35,134 @@ emptyCheckState = State {
 
 -- TcType checker implementation
 
-checkProgram :: Program -> Check ()
+checkProgram :: Program -> Check Program
 checkProgram (Prog topdefs) = do
     forM_ topdefs addTopDef
-    forM_ topdefs checkTopDef
+    typedTopDefs <- forM topdefs checkTopDef
+    return $ Prog typedTopDefs
 
 addTopDef :: TopDef -> Check ()
 addTopDef (FnDef returnType (Ident name) args _) =
     let argsTypes = map (\(Ar argType _) -> (typeToTcType argType)) args in
     addFunction name (TcFun (typeToTcType returnType) argsTypes)
 
-checkTopDef :: TopDef -> Check()
+checkTopDef :: TopDef -> Check TopDef
 checkTopDef (FnDef returnType (Ident name) args block) = do
     beginFunction name
     forM_ args addArg
-    checkBlock block
+    typedBlock <- checkBlock block
+    return $ FnDef returnType (Ident name) args typedBlock
 
-checkBlock :: Block -> Check ()
+checkBlock :: Block -> Check Block
 checkBlock (Blk stmts) = do
     vars <- gets variables
-    forM_ stmts checkStmt
+    typedStmts <- forM stmts checkStmt
     modify $ \s -> s { variables = vars }
+    return $ Blk typedStmts
 
-checkStmt :: Stmt -> Check ()
-checkStmt Empty = return ()
-checkStmt (BStmt block) = checkBlock block
-checkStmt (Decl varType items) = forM_ items $ checkDecl (typeToTcType varType)
+checkStmt :: Stmt -> Check Stmt
+checkStmt Empty = return Empty
+checkStmt (BStmt block) = do
+    typedBlock <- checkBlock block
+    return $ BStmt typedBlock
+checkStmt (Decl varType items) = do
+    typedItems <- forM items $ checkDecl (typeToTcType varType)
+    return $ Decl varType typedItems
 checkStmt (Ass (Ident name) expr) = do
     varType <- getVariableType name
-    expectType varType expr ("right hand side of assignment to " ++ name)
+    typedExpr <- expectType varType expr ("right hand side of assignment to " ++ name)
+    return $ Ass (Ident name) typedExpr
 
-checkStmt (AbsLatte.Incr var @ (Ident name)) =
+checkStmt stmt @ (AbsLatte.Incr var @ (Ident name)) = do
     expectType TcInt (EVar var TcNone) ("variable " ++ name)
-checkStmt (AbsLatte.Decr var @ (Ident name)) =
+    return stmt
+checkStmt stmt @ (AbsLatte.Decr var @ (Ident name)) = do
     expectType TcInt (EVar var TcNone) ("variable " ++ name)
+    return stmt
 checkStmt (Ret expr) = do
     currentFunctionName <- gets currentFunction
     currentFunction <- getFunctionType currentFunctionName
     let (TcFun retType _) = currentFunction
-    expectType retType expr "return value"
+    typedExpr <- expectType retType expr "return value"
+    return $ Ret typedExpr
 checkStmt VRet = do
     currentFunctionName <- gets currentFunction
     currentFunction <- getFunctionType currentFunctionName
     let (TcFun retType _) = currentFunction
     when (retType /= TcVoid) $
         reportError ("function " ++ currentFunctionName ++ " has to return value")
+    return VRet
 checkStmt (Cond expr stmt) = do
-    expectType TcBool expr "if condition"
-    checkStmt stmt
+    typedExpr <- expectType TcBool expr "if condition"
+    typedStmt <- checkStmt stmt
+    return $ Cond typedExpr typedStmt
 checkStmt (CondElse expr stmtIf stmtElse) = do
-    expectType TcBool expr "if condition"
-    checkStmt stmtIf
-    checkStmt stmtElse
+    typedExpr     <- expectType TcBool expr "if condition"
+    typedStmtIf   <- checkStmt stmtIf
+    typedStmtElse <- checkStmt stmtElse
+    return $ CondElse typedExpr typedStmtIf typedStmtElse
 checkStmt (While expr stmt) = do
-    expectType TcBool expr "while condition"
-    checkStmt stmt
-checkStmt (SExp expr) = checkExpr expr >> return ()
+    typedExpr <- expectType TcBool expr "while condition"
+    typedStmt <- checkStmt stmt
+    return $ While typedExpr typedStmt
+checkStmt (SExp expr) = do
+    (typedExpr, _) <- checkExpr expr
+    return $ SExp typedExpr
 
-checkDecl :: TcType -> Item -> Check ()
-checkDecl varType (NoInit (Ident name)) = addVariable name varType
+checkDecl :: TcType -> Item -> Check Item
+checkDecl varType decl @ (NoInit (Ident name)) = do
+    addVariable name varType
+    return decl
 checkDecl varType (Init (Ident name) expr) = do
     addVariable name varType
-    checkStmt (Ass (Ident name) expr)
+    typedExpr <- expectType varType expr ("initialization of variable " ++ name)
+    return $ Init (Ident name) typedExpr
 
-checkExpr :: Expr -> Check TcType
-checkExpr (EVar (Ident name) _) = getVariableType name
-checkExpr (ELitInt _ _) = return TcInt
-checkExpr (ELitTrue _) = return TcBool
-checkExpr (ELitFalse _) = return TcBool
+checkExpr :: Expr -> Check (Expr, TcType)
+checkExpr (EVar (Ident name) _) = do
+    varType <- getVariableType name
+    return (EVar (Ident name) varType, varType)
+checkExpr (ELitInt n _) = return (ELitInt n TcInt, TcInt)
+checkExpr (ELitTrue _) = return (ELitTrue TcBool, TcBool)
+checkExpr (ELitFalse _) = return (ELitFalse TcBool, TcBool)
 checkExpr (EApp (Ident funName) args _) = do
     funType <- getFunctionType funName
-    case funType of
-        TcFun retType funArgTypes -> do
-            when ((length args) /= (length funArgTypes)) $
-                reportError ("Incorrect number of arguments for function " ++ funName)
-            argTypes <- forM args checkExpr
-            when (argTypes /= funArgTypes) $ reportError
-                ("Argument types for function " ++ funName ++ " does not match")
-            return retType
-checkExpr (EString string _) = return TcStr
+    let (TcFun retType funArgTypes) = funType
+    when ((length args) /= (length funArgTypes)) $
+        reportError ("Incorrect number of arguments for function " ++ funName)
+    checkedArgs <- forM args checkExpr
+    let typedArgs = map fst checkedArgs
+    let argTypes  = map snd checkedArgs
+    when (argTypes /= funArgTypes) $ reportError
+        ("Argument types for function " ++ funName ++ " does not match")
+    return (EApp (Ident funName) typedArgs retType, retType)
+checkExpr (EString string _) = return (EString string TcStr, TcStr)
 checkExpr (Neg expr _) = do
-    expectType TcInt expr "negation argument"
-    return TcInt
+    typedExpr <- expectType TcInt expr "negation argument"
+    return (Neg typedExpr TcInt, TcInt)
 checkExpr (Not expr _) = do
-    expectType TcBool expr "negation argument"
-    return TcBool
+    typedExpr <- expectType TcBool expr "negation argument"
+    return (Not typedExpr TcBool, TcBool)
 checkExpr (EMul lhs mulop rhs _) = do
-    expectType TcInt lhs "left multiplication operand"
-    expectType TcInt rhs "right multiplication operand"
-    return TcInt
+    typedLhs <- expectType TcInt lhs "left multiplication operand"
+    typedRhs <- expectType TcInt rhs "right multiplication operand"
+    return (EMul typedLhs mulop typedRhs TcInt, TcInt)
 checkExpr (EAdd lhs addop rhs _) = do
-    expectType TcInt lhs "left addition operand"
-    expectType TcInt rhs "right addition operand"
-    return TcInt
+    typedLhs <- expectType TcInt lhs "left addition operand"
+    typedRhs <- expectType TcInt rhs "right addition operand"
+    return (EAdd typedLhs addop typedRhs TcInt, TcInt)
 checkExpr (ERel lhs relop rhs _) = do
-    expectType TcInt lhs "left compare operand"
-    expectType TcInt rhs "right compare operand"
-    return TcBool
+    typedLhs <- expectType TcInt lhs "left compare operand"
+    typedRhs <- expectType TcInt rhs "right compare operand"
+    return (ERel typedLhs relop typedRhs TcBool, TcBool)
 checkExpr (EAnd lhs rhs _) = do
-    expectType TcBool lhs "left and operand"
-    expectType TcBool rhs "right and operand"
-    return TcBool
+    typedLhs <- expectType TcBool lhs "left and operand"
+    typedRhs <- expectType TcBool rhs "right and operand"
+    return (EAnd typedLhs typedRhs TcBool, TcBool)
 checkExpr (EOr lhs rhs _) = do
-    expectType TcBool lhs "left and operand"
-    expectType TcBool rhs "right and operand"
-    return TcBool
+    typedLhs <- expectType TcBool lhs "left and operand"
+    typedRhs <- expectType TcBool rhs "right and operand"
+    return (EOr typedLhs typedRhs TcBool, TcBool)
 
 beginFunction :: String -> Check ()
 beginFunction name = modify $ \s -> s { currentFunction = name }
@@ -187,12 +210,14 @@ getVariableType name = do
         Just varType -> return varType
         Nothing      -> reportError $ "Unkown variable " ++ name
 
-expectType :: TcType -> Expr -> String -> Check ()
+expectType :: TcType -> Expr -> String -> Check Expr
 expectType expectedType expr what = do
-    actualType <- checkExpr expr
+    checkedExpr <- checkExpr expr
+    let typedExpr  = fst checkedExpr
+    let actualType = snd checkedExpr
     when (expectedType /= actualType) $ reportError ("Incorrect type of " ++ what ++
         ": expected " ++ (show expectedType) ++ ", got " ++ (show actualType))
-    return ()
+    return typedExpr
 
 typeToTcType :: Type -> TcType
 typeToTcType Int  = TcInt

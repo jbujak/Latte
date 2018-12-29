@@ -75,7 +75,7 @@ changeExtension baseFilename newExtension =
 tryCompile :: String -> Either String String
 tryCompile content = do
     ast <- parse content
-    checkTypes ast
+    ast <- checkTypes ast
     ir  <- generateIr ast
     asm <- generateAsm ir
     --TODO remove printing IR
