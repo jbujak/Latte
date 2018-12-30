@@ -4,7 +4,7 @@ OUT=latc_x86_64
 
 all: $(OUT)
 
-$(OUT): src/*.hs src/bnfc/ParLatte.hs
+$(OUT): src/*.hs src/bnfc/ParLatte.hs tags
 	cd src && ghc -o $(OUT) -i $(addprefix bnfc/,$(GRAMMAR_FILES)) -i *.hs
 	mv src/$(OUT) .
 

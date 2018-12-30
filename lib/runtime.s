@@ -12,6 +12,7 @@ global error
 global readInt
 
 global _latte_strcpy_to_new
+global _latte_strcat_to_new
 
 section .rodata
 
@@ -82,27 +83,59 @@ readInt:
 _latte_strcpy_to_new:
     push	rbp
     push    r12
-    push    r13
     mov	    rbp, rsp
     mov     r12, rdi
-    mov     r13, rdi
 
     mov rdi, r12
     call strlen
     inc rax
 
-    mov rdi, rax
 # TODO check error
+    mov rdi, rax
     call malloc
-    mov r13, rax
 
-    mov rdi, r13
+    mov rdi, rax
     mov rsi, r12
     call strcpy
 
     mov    rsp, rbp
-    mov    rax, r13
-    pop    r13
     pop    r12
     pop    rbp
+    ret
+
+# rax = strcat(rdi, rsi)
+_latte_strcat_to_new:
+    push    rbp
+    push    r12
+    push    r13
+    push    r14
+    mov	    rbp, rsp
+    mov     r12, rdi
+    mov     r13, rsi
+
+    mov     rdi, r12
+    call    strlen
+    mov     r14, rax
+
+    mov     rdi, r13
+    call    strlen
+    add     rax, r14
+    inc     rax
+
+    mov     rdi, rax
+    call    malloc
+
+    mov     rdi, rax
+    mov     rsi, r12
+    call    strcpy
+
+    mov     rdi, rax
+    mov     rsi, r13
+    call    strcat
+
+    mov     rsp, rbp
+    pop     r14
+    pop     r13
+    pop     r12
+    pop     rbp
     ret

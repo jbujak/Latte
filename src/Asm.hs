@@ -133,6 +133,7 @@ externFunctions = do
     extern "error"
     extern "readInt"
     extern strcpy_to_new
+    extern strcat_to_new
 
 programData :: Ir -> Generate ()
 programData ir = programDataInner strings ((toInteger $ length strings)-1) where
@@ -176,7 +177,14 @@ binOp lhs rhs Lt  = compareAndReadFlag lhs rhs lhs cfBit False
 binOp lhs rhs Gte = compareAndReadFlag lhs rhs lhs cfBit True
 binOp lhs rhs Gt  = compareAndReadFlag rhs lhs lhs cfBit False
 binOp lhs rhs Lte = compareAndReadFlag rhs lhs lhs cfBit True
-binop lhs rhs Concat = nop --strcat lhs rhs TODO
+binOp lhs rhs Concat = do
+    let (Just firstArg)  = registerForArgument 0
+    let (Just secondArg) = registerForArgument 1
+    mov (Reg firstArg)  (Reg lhs)
+    mov (Reg secondArg) (Reg rhs)
+    call strcat_to_new
+    mov (Reg lhs) (Reg RAX)
+
 
 divResultFrom :: Register -> Register -> Register -> Generate ()
 divResultFrom lhs rhs result = do
@@ -218,6 +226,9 @@ labelName label = do
 
 strcpy_to_new :: String
 strcpy_to_new = "_latte_strcpy_to_new"
+
+strcat_to_new :: String
+strcat_to_new = "_latte_strcat_to_new"
 
 
 -- Auxiliary functions

@@ -1,0 +1,6 @@
+int main() {
+	string s1, s2;
+	s1 = "a";
+	s2 = "b";
+	printString(s1 + s2);
+}
