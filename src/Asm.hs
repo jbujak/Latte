@@ -56,8 +56,11 @@ generateAsmFromCommand Nop =
     nop
 generateAsmFromCommand (LoadConst local (ConstInt value)) =
     mov (Loc local) (Int value)
-generateAsmFromCommand (LoadConst local (ConstString stringNo)) =
-    mov (Loc local) (Ptr ("str_" ++ (show stringNo)))
+generateAsmFromCommand (LoadConst local (ConstString stringNo)) = do
+    let (Just firstArg) = registerForArgument 0
+    mov (Reg firstArg) (Ptr $ stringLabel stringNo)
+    call strcpy_to_new
+    mov (Loc local) (Reg RAX)
 generateAsmFromCommand (Call local name args) = do
     generateLoadArgsToRegs args
     call name
@@ -129,6 +132,7 @@ externFunctions = do
     extern "printString"
     extern "error"
     extern "readInt"
+    extern strcpy_to_new
 
 programData :: Ir -> Generate ()
 programData ir = programDataInner strings ((toInteger $ length strings)-1) where
@@ -140,7 +144,10 @@ programData ir = programDataInner strings ((toInteger $ length strings)-1) where
 
 stringConst :: String -> Integer -> Generate ()
 stringConst str strNo =
-    printStr $ "str_" ++ show strNo ++ " db \"" ++ str ++ "\", 0\n"
+    printStr $ (stringLabel strNo) ++ " db \"" ++ str ++ "\", 0\n"
+
+stringLabel :: Integer -> String
+stringLabel strNo = "str_" ++ show strNo
 
 section :: String -> Generate ()
 section name = printStr $ "section " ++ name ++ "\n"
@@ -169,6 +176,7 @@ binOp lhs rhs Lt  = compareAndReadFlag lhs rhs lhs cfBit False
 binOp lhs rhs Gte = compareAndReadFlag lhs rhs lhs cfBit True
 binOp lhs rhs Gt  = compareAndReadFlag rhs lhs lhs cfBit False
 binOp lhs rhs Lte = compareAndReadFlag rhs lhs lhs cfBit True
+binop lhs rhs Concat = nop --strcat lhs rhs TODO
 
 divResultFrom :: Register -> Register -> Register -> Generate ()
 divResultFrom lhs rhs result = do
@@ -206,6 +214,12 @@ labelName label = do
     funName <- gets currentFunction
     return $ funName ++ "_label_" ++ show label
 
+-- Auxiliary internal functions
+
+strcpy_to_new :: String
+strcpy_to_new = "_latte_strcpy_to_new"
+
+
 -- Auxiliary functions
 
 alignStackSize :: Integer -> Integer
@@ -235,8 +249,8 @@ mov (Reg dstReg) (Int srcInt) = asmLine ["mov", show dstReg, ",", show srcInt]
 mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show srcReg]
 mov (Loc dstLocal) (Int srcInt) =
     asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
-mov (Loc dstLocal) (Ptr ptrName) =
-    asmLine ["mov", "QWORD", getLocal dstLocal, ",", ptrName]
+mov (Reg dstReg) (Ptr ptrName) =
+    asmLine ["mov", "QWORD", show dstReg, ",", ptrName]
 
 cmp :: Register -> Value -> Generate ()
 cmp lhs (Int rhs) = asmLine ["cmp", show lhs, ", ", show rhs]
@@ -275,6 +289,9 @@ sub lhs rhs = asmBinOp "sub" lhs rhs
 
 imul :: Register -> Value -> Generate ()
 imul lhs rhs = asmBinOp "imul" lhs rhs
+
+inc :: Register -> Generate ()
+inc reg = asmLine ["inc", show reg]
 
 and :: Register -> Value -> Generate ()
 and lhs rhs = asmBinOp "and" lhs rhs

@@ -1,13 +1,20 @@
 extern printf
 extern scanf
 extern exit
+extern malloc
+extern strlen
+extern strcpy
+extern strcat
 
 global printInt
 global printString
 global error
 global readInt
 
+global _latte_strcpy_to_new
+
 section .rodata
+
 fmt_int    db "%lld", 10, 0
 fmt_int_sc db "%lld", 0
 fmt_string db "%s", 10, 0
@@ -68,5 +75,34 @@ readInt:
     mov    rax, [rbp-16]
 
     mov    rsp, rbp
+    pop    rbp
+    ret
+
+# rax = strcpy(rdi)
+_latte_strcpy_to_new:
+    push	rbp
+    push    r12
+    push    r13
+    mov	    rbp, rsp
+    mov     r12, rdi
+    mov     r13, rdi
+
+    mov rdi, r12
+    call strlen
+    inc rax
+
+    mov rdi, rax
+# TODO check error
+    call malloc
+    mov r13, rax
+
+    mov rdi, r13
+    mov rsi, r12
+    call strcpy
+
+    mov    rsp, rbp
+    mov    rax, r13
+    pop    r13
+    pop    r12
     pop    rbp
     ret
