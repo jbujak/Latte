@@ -148,9 +148,20 @@ checkExpr (EMul lhs mulop rhs _) = do
     typedRhs <- expectType TcInt rhs "right multiplication operand"
     return (EMul typedLhs mulop typedRhs TcInt, TcInt)
 checkExpr (EAdd lhs addop rhs _) = do
-    typedLhs <- expectType TcInt lhs "left addition operand"
-    typedRhs <- expectType TcInt rhs "right addition operand"
-    return (EAdd typedLhs addop typedRhs TcInt, TcInt)
+    checkedLhs <- checkExpr lhs
+    let lhsType  = snd checkedLhs
+    if lhsType == TcInt then do
+        typedLhs <- expectType TcInt lhs "left addition operand"
+        typedRhs <- expectType TcInt rhs "right addition operand"
+        return (EAdd typedLhs addop typedRhs TcInt, TcInt)
+    else if lhsType == TcStr then do
+        typedLhs <- expectType TcStr lhs "left addition operand"
+        typedRhs <- expectType TcStr rhs "right addition operand"
+        return (EAdd typedLhs addop typedRhs TcStr, TcStr)
+    else reportError
+        ("Incorrect type of left addidtion operand: expected " ++ show TcInt ++ " or " ++
+            show TcStr ++ ", got " ++ show lhsType)
+
 checkExpr (ERel lhs relop rhs _) = do
     typedLhs <- expectType TcInt lhs "left compare operand"
     typedRhs <- expectType TcInt rhs "right compare operand"

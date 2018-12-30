@@ -130,7 +130,6 @@ externFunctions = do
     extern "error"
     extern "readInt"
 
-
 programData :: Ir -> Generate ()
 programData ir = programDataInner strings ((toInteger $ length strings)-1) where
     strings = stringLiterals ir

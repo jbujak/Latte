@@ -55,7 +55,8 @@ data UnOpType  = Incr | Decr
 
 data BinOpType = Add | Sub | Mul | Div | Mod |
                  Lt  | Lte | Gt  | Gte | Eq  | Neq |
-                 And | Or  | Xor
+                 And | Or  | Xor |
+                 Concat
                deriving Show
 
 data GenerateState = State {
@@ -176,8 +177,10 @@ generateExpr (Not expr _) = do
     return resultLocal
 generateExpr (EMul lhs mulop rhs _) = do
     generateBinOpExpr lhs rhs (mulOpToBinOp mulop)
-generateExpr (EAdd lhs addop rhs _) = do
+generateExpr (EAdd lhs addop rhs TcInt) = do
     generateBinOpExpr lhs rhs (addOpToBinOp addop)
+generateExpr (EAdd lhs addop rhs TcStr) = do
+    generateBinOpExpr lhs rhs Concat
 generateExpr (ERel lhs relop rhs _) = do
     generateBinOpExpr lhs rhs (relOpToBinOp relop)
 generateExpr (EAnd lhs rhs _) = do
