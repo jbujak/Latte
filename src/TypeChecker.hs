@@ -163,9 +163,16 @@ checkExpr (EAdd lhs addop rhs _) = do
             show TcStr ++ ", got " ++ show lhsType)
 
 checkExpr (ERel lhs relop rhs _) = do
-    typedLhs <- expectType TcInt lhs "left compare operand"
-    typedRhs <- expectType TcInt rhs "right compare operand"
-    return (ERel typedLhs relop typedRhs TcBool, TcBool)
+    checkedLhs <- checkExpr lhs
+    let lhsType  = snd checkedLhs
+    if (lhsType == TcBool && (relop == EQU || relop == NE)) then do
+        typedLhs <- expectType TcBool lhs "left comparison operand"
+        typedRhs <- expectType TcBool rhs "right comparison operand"
+        return (ERel typedLhs relop typedRhs TcBool, TcBool)
+    else do
+        typedLhs <- expectType TcInt lhs "left comparison operand"
+        typedRhs <- expectType TcInt rhs "right comparison operand"
+        return (ERel typedLhs relop typedRhs TcBool, TcBool)
 checkExpr (EAnd lhs rhs _) = do
     typedLhs <- expectType TcBool lhs "left and operand"
     typedRhs <- expectType TcBool rhs "right and operand"

@@ -220,6 +220,29 @@ generateUnOpExpr name op = do
     printCommand $ BinOp local local one binOp
 
 generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
+generateBinOpExpr lhs rhs And = do
+    resLocal <- newLocal
+    finish   <- newLabel
+    lhsLocal <- generateExpr lhs
+    lhsNeg   <- newLocal
+    one      <- generateExpr $ ELitInt 1 TcInt
+    printCommand $ BinOp lhsNeg lhsLocal one Xor
+    printCommand $ Assign resLocal lhsLocal
+    printCommand $ GotoIf lhsNeg finish
+    rhsLocal <- generateExpr rhs
+    printCommand $ BinOp resLocal lhsLocal rhsLocal And
+    printCommand $ PrintLabel finish
+    return resLocal
+generateBinOpExpr lhs rhs Or = do
+    resLocal <- newLocal
+    finish   <- newLabel
+    lhsLocal <- generateExpr lhs
+    printCommand $ Assign resLocal lhsLocal
+    printCommand $ GotoIf lhsLocal finish
+    rhsLocal <- generateExpr rhs
+    printCommand $ BinOp resLocal lhsLocal rhsLocal Or
+    printCommand $ PrintLabel finish
+    return resLocal
 generateBinOpExpr lhs rhs binOp = do
     lhsLocal <- generateExpr lhs
     rhsLocal <- generateExpr rhs

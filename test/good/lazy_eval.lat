@@ -1,0 +1,22 @@
+int main() {
+    if (no() && fail()) {
+    }
+    if (yes() || fail()) {
+    }
+    return 0;
+}
+
+boolean yes() {
+    printInt(2);
+    return true;
+}
+
+boolean no() {
+    printInt(1);
+    return false;
+}
+
+boolean fail() {
+    printInt(0);
+    return false;
+}

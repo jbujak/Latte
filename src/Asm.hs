@@ -171,12 +171,12 @@ binOp lhs rhs Or  = Asm.or   lhs (Reg rhs)
 binOp lhs rhs Xor = Asm.xor  lhs (Reg rhs)
 binOp lhs rhs Div = divResultFrom lhs rhs RAX
 binOp lhs rhs Mod = divResultFrom lhs rhs RDX
-binOp lhs rhs Eq  = compareAndReadFlag lhs rhs lhs zfBit False
-binOp lhs rhs Neq = compareAndReadFlag lhs rhs lhs zfBit True
-binOp lhs rhs Lt  = compareAndReadFlag lhs rhs lhs cfBit False
-binOp lhs rhs Gte = compareAndReadFlag lhs rhs lhs cfBit True
-binOp lhs rhs Gt  = compareAndReadFlag rhs lhs lhs cfBit False
-binOp lhs rhs Lte = compareAndReadFlag rhs lhs lhs cfBit True
+binOp lhs rhs Eq  = compareEqual lhs lhs rhs False
+binOp lhs rhs Neq = compareEqual lhs lhs rhs True
+binOp lhs rhs Lt  = compareLess lhs lhs rhs False
+binOp lhs rhs Gte = compareLess lhs lhs rhs True
+binOp lhs rhs Gt  = compareLess lhs rhs lhs False
+binOp lhs rhs Lte = compareLess lhs rhs lhs True
 binOp lhs rhs Concat = do
     let (Just firstArg)  = registerForArgument 0
     let (Just secondArg) = registerForArgument 1
@@ -193,13 +193,27 @@ divResultFrom lhs rhs result = do
     idiv rhs
     mov (Reg lhs) (Reg result)
 
-compareAndReadFlag :: Register -> Register -> Register -> Integer -> Bool -> Generate ()
-compareAndReadFlag lhs rhs outReg flagBit negate = do
+compareEqual :: Register -> Register -> Register -> Bool -> Generate ()
+compareEqual outReg lhs rhs negate = do
     xor RAX (Reg RAX)
     cmp lhs (Reg rhs)
     lahf
-    shr RAX flagBit
+    shr RAX zfBit
     Asm.and RAX (Int 0x1)
+    when negate $ xor RAX (Int 0x1)
+    mov (Reg outReg) (Reg RAX)
+
+compareLess :: Register -> Register -> Register -> Bool -> Generate ()
+compareLess outReg lhs rhs negate = do
+    xor RAX (Reg RAX)
+    cmp lhs (Reg rhs)
+    lahf
+    mov (Reg RCX) (Reg RAX)
+    shr RAX sfBit
+    shr RCX ofBit
+    Asm.and RAX (Int 0x1)
+    Asm.and RCX (Int 0x1)
+    xor RAX (Reg RCX)
     when negate $ xor RAX (Int 0x1)
     mov (Reg outReg) (Reg RAX)
 
@@ -322,8 +336,11 @@ lahf = asmLine ["lahf"]
 zfBit :: Integer
 zfBit = 14
 
-cfBit :: Integer
-cfBit = 8
+sfBit :: Integer
+sfBit = 15
+
+ofBit :: Integer
+ofBit = 19
 
 neg :: Register -> Generate ()
 neg reg = asmLine ["neg", show reg]
