@@ -6,13 +6,14 @@ extern realloc
 extern strlen
 extern strcpy
 extern strcat
-extern read
+extern getchar
 
 global printInt
 global printString
 global error
 global readInt
 global readString
+global main
 
 global _latte_strcpy_to_new
 global _latte_strcat_to_new
@@ -20,7 +21,6 @@ global _latte_strcat_to_new
 section .rodata
 
 fmt_int    db "%lld", 10, 0
-fmt_int_sc db "%lld", 0
 fmt_string db "%s", 10, 0
 rt_error   db "runtime error", 10, 0
 
@@ -74,8 +74,9 @@ readInt:
 
     lea	rax, [rbp-16]
     mov	rsi, rax
-    mov	rdi, fmt_int_sc
+    mov	rdi, fmt_int
     call   scanf wrt ..plt
+
     mov    rax, [rbp-16]
 
     mov    rsp, rbp
@@ -99,12 +100,11 @@ readString:
 readString_readChar:
     inc    r14
 readString_readFirstChar:
-    mov    rdi, 0
-    lea    rsi, [r12+r14]
-    mov    rdx, 1
-    call   read wrt ..plt
+    call   getchar wrt ..plt
+    lea    rdx, [r12+r14]
+    mov    BYTE [rdx], al
 
-    cmp    rax, 0
+    cmp    rax, -1
     je     readString_exit
 
     lea    rax, [r12+r14]
