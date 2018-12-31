@@ -132,6 +132,7 @@ externFunctions = do
     extern "printString"
     extern "error"
     extern "readInt"
+    extern "readString"
     extern strcpy_to_new
     extern strcat_to_new
 

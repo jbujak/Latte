@@ -208,6 +208,7 @@ getBuiltinFunctionType :: String -> Maybe TcType
 getBuiltinFunctionType "printInt" = Just $ TcFun TcVoid [TcInt]
 getBuiltinFunctionType "printString" = Just $ TcFun TcVoid [TcStr]
 getBuiltinFunctionType "readInt" = Just $ TcFun TcInt []
+getBuiltinFunctionType "readString" = Just $ TcFun TcStr []
 getBuiltinFunctionType "error" = Just $ TcFun TcVoid []
 getBuiltinFunctionType _ = Nothing
 

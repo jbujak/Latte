@@ -2,14 +2,17 @@ extern printf
 extern scanf
 extern exit
 extern malloc
+extern realloc
 extern strlen
 extern strcpy
 extern strcat
+extern read
 
 global printInt
 global printString
 global error
 global readInt
+global readString
 
 global _latte_strcpy_to_new
 global _latte_strcat_to_new
@@ -76,6 +79,56 @@ readInt:
     mov    rax, [rbp-16]
 
     mov    rsp, rbp
+    pop    rbp
+    ret
+
+readString:
+    push   rbp
+    push   r12
+    push   r13
+    push   r14
+    mov    rbp, rsp
+
+    mov    r13, 16
+    mov    rdi, r13
+    call   malloc
+    mov    r12, rax
+    mov    r14, 0
+    jmp readString_readFirstChar
+
+readString_readChar:
+    inc    r14
+readString_readFirstChar:
+    mov    rdi, 0
+    lea    rsi, [r12+r14]
+    mov    rdx, 1
+    call   read wrt ..plt
+
+    cmp    rax, 0
+    je     readString_exit
+
+    lea    rax, [r12+r14]
+    cmp    BYTE [rax], 10
+    je     readString_exit
+
+    cmp    r13, r14
+    jg     readString_readChar
+
+    shl    r13, 1
+    mov    rdi, r12
+    mov    rsi, r13
+    call   realloc
+    mov    r12, rax
+    jmp    readString_readChar
+
+readString_exit:
+    lea    rax, [r12+r14]
+    mov    BYTE [rax], 0
+    mov    rax, r12
+    mov    rsp, rbp
+    pop    r14
+    pop    r13
+    pop    r12
     pop    rbp
     ret
 
