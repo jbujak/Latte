@@ -108,7 +108,14 @@ generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
 
 generateStmt :: Stmt -> Generate ()
 generateStmt Empty = printCommand Nop
-generateStmt (BStmt (Blk stmts)) = forM_ stmts generateStmt
+generateStmt (BStmt (Blk stmts)) = do
+    currentFunctionBefore <- getCurrentFunction
+    let variablesBefore = variables currentFunctionBefore
+    forM_ stmts generateStmt
+    currentFunctionAfter <- getCurrentFunction
+    modify $ \s -> s {
+        currentFunction = Just $ currentFunctionAfter { variables = variablesBefore }
+    }
 generateStmt (Decl _ items) = forM_ items generateItem
 generateStmt (Ass (Ident name) expr) = do
     local <- getVariable name
@@ -193,8 +200,8 @@ generateItem (NoInit (Ident name)) = do
     newVariable name
     return ()
 generateItem (Init (Ident name) expr) = do
-    varLocal <- newVariable name
     result   <- generateExpr expr
+    varLocal <- newVariable name
     printCommand $ Assign varLocal result
 
 generateArgs :: [Arg] -> Generate ()

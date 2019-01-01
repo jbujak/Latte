@@ -21,4 +21,15 @@ int main() {
     n = 1;
     printInt(m);
     printInt(m+n);
+
+    int i = 7;
+    printInt(i);
+    {
+        int i = i + 1;
+        printInt(i);
+        i++;
+        printInt(i);
+    }
+    i = i + 3;
+    printInt(i);
 }
