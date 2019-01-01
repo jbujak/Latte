@@ -12,7 +12,8 @@ import Data.List
 data CheckState = State {
     functions :: [(String, TcType)],
     currentFunction :: String,
-    variables :: [(String, TcType)]
+    variables :: [(String, TcType)],
+    innerVariables :: [(String)]
 }
 
 type Check a = (StateT CheckState (Either String)) a
@@ -29,7 +30,8 @@ emptyCheckState :: CheckState
 emptyCheckState = State {
     functions = [],
     currentFunction = "",
-    variables = []
+    variables = [],
+    innerVariables = []
 }
 
 
@@ -56,8 +58,10 @@ checkTopDef (FnDef returnType (Ident name) args block) = do
 checkBlock :: Block -> Check Block
 checkBlock (Blk stmts) = do
     vars <- gets variables
+    innerVars <- gets innerVariables
+    modify $ \s -> s { innerVariables = [] }
     typedStmts <- forM stmts checkStmt
-    modify $ \s -> s { variables = vars }
+    modify $ \s -> s { variables = vars, innerVariables = innerVars }
     return $ Blk typedStmts
 
 checkStmt :: Stmt -> Check Stmt
@@ -183,7 +187,7 @@ checkExpr (EOr lhs rhs _) = do
     return (EOr typedLhs typedRhs TcBool, TcBool)
 
 beginFunction :: String -> Check ()
-beginFunction name = modify $ \s -> s { currentFunction = name }
+beginFunction name = modify $ \s -> s { currentFunction = name, variables = [], innerVariables = [] }
 
 -- Auxiliary functions
 
@@ -213,14 +217,21 @@ getBuiltinFunctionType "error" = Just $ TcFun TcVoid []
 getBuiltinFunctionType _ = Nothing
 
 addArg :: Arg -> Check ()
-addArg (Ar argType (Ident name)) = addVariable name (typeToTcType argType)
+addArg (Ar argType (Ident name)) = do
+    variables <- gets variables
+    case lookup name variables of
+        Just _  -> reportError $ "Repeated argument name " ++ name
+        Nothing -> addVariable name (typeToTcType argType)
 
 addVariable :: String -> TcType -> Check ()
 addVariable name varType =  do
     variables <- gets variables
+    innerVariables <- gets innerVariables
+    when (elem name innerVariables) (reportError $ "Multiple declarations of variable " ++ name)
     modify $ \s -> s {
-        variables = (name, varType):variables
-    }
+            variables = (name, varType):variables,
+            innerVariables = name:innerVariables
+        }
 
 getVariableType :: String -> Check TcType
 getVariableType name = do

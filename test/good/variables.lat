@@ -32,4 +32,11 @@ int main() {
     }
     i = i + 3;
     printInt(i);
+
+    int s = 11;
+    {
+        string s = "a";
+        printString(s);
+    }
+    printInt(s);
 }
