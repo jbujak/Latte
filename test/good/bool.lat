@@ -44,4 +44,5 @@ int main () {
   if (true == true) {
     printInt(8);
   }
+  return 0;
 }

@@ -5,4 +5,5 @@ int main() {
         i++;
     }
     printInt(i);
+    return 0;
 }

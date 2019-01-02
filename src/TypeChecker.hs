@@ -13,7 +13,8 @@ data CheckState = State {
     functions :: [(String, TcType)],
     currentFunction :: String,
     variables :: [(String, TcType)],
-    innerVariables :: [(String)]
+    innerVariables :: [(String)],
+    returned :: Bool
 }
 
 type Check a = (StateT CheckState (Either String)) a
@@ -24,18 +25,19 @@ checkTypes :: Program -> Either String Program
 checkTypes prog = runChecker $ checkProgram prog
 
 runChecker :: Check Program -> Either String Program
-runChecker m = fmap (fst) $ runStateT m emptyCheckState
+runChecker m = fmap fst $ runStateT m emptyCheckState
 
 emptyCheckState :: CheckState
 emptyCheckState = State {
     functions = [],
     currentFunction = "",
     variables = [],
-    innerVariables = []
+    innerVariables = [],
+    returned = False
 }
 
 
--- TcType checker implementation
+-- Type checker implementation
 
 checkProgram :: Program -> Check Program
 checkProgram (Prog topdefs) = do
@@ -52,7 +54,10 @@ checkTopDef :: TopDef -> Check TopDef
 checkTopDef (FnDef returnType (Ident name) args block) = do
     beginFunction name
     forM_ args addArg
-    typedBlock <- checkBlock block
+    typedBlock  <- checkBlock block
+    funReturned <- gets returned
+    when (not funReturned && returnType /= Void) $
+        reportError ("Function " ++ name ++ " may not return value")
     return $ FnDef returnType (Ident name) args typedBlock
 
 checkBlock :: Block -> Check Block
@@ -71,23 +76,27 @@ checkStmt (BStmt block) = do
     return $ BStmt typedBlock
 checkStmt (Decl varType items) = do
     typedItems <- forM items $ checkDecl (typeToTcType varType)
+    setReturned False
     return $ Decl varType typedItems
 checkStmt (Ass (Ident name) expr) = do
     varType <- getVariableType name
     typedExpr <- expectType varType expr ("right hand side of assignment to " ++ name)
+    setReturned False
     return $ Ass (Ident name) typedExpr
-
 checkStmt stmt @ (AbsLatte.Incr var @ (Ident name)) = do
     expectType TcInt (EVar var TcNone) ("variable " ++ name)
+    setReturned False
     return stmt
 checkStmt stmt @ (AbsLatte.Decr var @ (Ident name)) = do
     expectType TcInt (EVar var TcNone) ("variable " ++ name)
+    setReturned False
     return stmt
 checkStmt (Ret expr) = do
     currentFunctionName <- gets currentFunction
     currentFunction <- getFunctionType currentFunctionName
     let (TcFun retType _) = currentFunction
     typedExpr <- expectType retType expr "return value"
+    setReturned True
     return $ Ret typedExpr
 checkStmt VRet = do
     currentFunctionName <- gets currentFunction
@@ -95,15 +104,29 @@ checkStmt VRet = do
     let (TcFun retType _) = currentFunction
     when (retType /= TcVoid) $
         reportError ("function " ++ currentFunctionName ++ " has to return value")
+    setReturned False
     return VRet
 checkStmt (Cond expr stmt) = do
     typedExpr <- expectType TcBool expr "if condition"
+    setReturned False
     typedStmt <- checkStmt stmt
+    returned  <- gets returned
+    case exprEval expr of
+        Just True -> setReturned returned
+        _         -> setReturned False
     return $ Cond typedExpr typedStmt
 checkStmt (CondElse expr stmtIf stmtElse) = do
     typedExpr     <- expectType TcBool expr "if condition"
+    setReturned False
     typedStmtIf   <- checkStmt stmtIf
+    ifReturned    <- gets returned
+    setReturned False
     typedStmtElse <- checkStmt stmtElse
+    elseReturned  <- gets returned
+    case exprEval expr of
+        Just True  -> setReturned ifReturned
+        Just False -> setReturned elseReturned
+        Nothing    -> setReturned (ifReturned && elseReturned)
     return $ CondElse typedExpr typedStmtIf typedStmtElse
 checkStmt (While expr stmt) = do
     typedExpr <- expectType TcBool expr "while condition"
@@ -111,6 +134,7 @@ checkStmt (While expr stmt) = do
     return $ While typedExpr typedStmt
 checkStmt (SExp expr) = do
     (typedExpr, _) <- checkExpr expr
+    setReturned False
     return $ SExp typedExpr
 
 checkDecl :: TcType -> Item -> Check Item
@@ -189,6 +213,23 @@ checkExpr (EOr lhs rhs _) = do
 beginFunction :: String -> Check ()
 beginFunction name = modify $ \s -> s { currentFunction = name, variables = [], innerVariables = [] }
 
+-- Constant evaluation (only boolean for now)
+
+exprEval :: Expr -> Maybe Bool
+exprEval (ELitTrue _) = Just True
+exprEval (ELitFalse _) = Just False
+exprEval (EAnd lhs rhs _) = case (exprEval lhs, exprEval rhs) of
+    (Just True, Just True) -> Just True
+    (Just False, _)        -> Just False
+    (_, Just False)        -> Just False
+    (_, _)                 -> Nothing
+exprEval (EOr lhs rhs _) = case (exprEval lhs, exprEval rhs) of
+    (Just False, Just False) -> Just False
+    (Just True, _)           -> Just True
+    (_, Just True)           -> Just True
+    (_, _)                   -> Nothing
+exprEval _ = Nothing
+
 -- Auxiliary functions
 
 addFunction :: String -> TcType -> Check ()
@@ -232,6 +273,9 @@ addVariable name varType =  do
             variables = (name, varType):variables,
             innerVariables = name:innerVariables
         }
+
+setReturned :: Bool -> Check ()
+setReturned ret = modify $ \s -> s { returned = ret}
 
 getVariableType :: String -> Check TcType
 getVariableType name = do

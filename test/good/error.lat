@@ -2,6 +2,7 @@ int main() {
     printInt(1);
     callError();
     printInt(0);
+    return 0;
 }
 
 void callError() {

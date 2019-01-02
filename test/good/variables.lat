@@ -39,4 +39,5 @@ int main() {
         printString(s);
     }
     printInt(s);
+    return 0;
 }

@@ -60,4 +60,5 @@ int main() {
     if (1 != 0) {
         printInt(8);
     }
+    return 0;
 }

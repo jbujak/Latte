@@ -3,4 +3,5 @@ int main() {
 	s1 = "a";
 	s2 = "b";
 	printString(s1 + s2);
+    return 0;
 }

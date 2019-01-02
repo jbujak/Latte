@@ -1,0 +1,29 @@
+int main() {
+    if (true) {
+        return 0;
+    }
+}
+
+int f() {
+    if (true && false) {
+    } else {
+        return 1;
+    }
+}
+
+int g() {
+    if (true && true) {
+        return 1;
+    } else {
+    }
+}
+
+int h() {
+    if (true || no()) {
+        return 1;
+    }
+}
+
+boolean no() {
+    return false;
+}
