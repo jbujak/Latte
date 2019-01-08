@@ -17,6 +17,8 @@ for file in $(ls $GOOD/*.lat)
 do
 	total=$((total+1))
 	./$EXE $file >/dev/null 2>&1
+    mv ${file%.*} out.exe
+    rm ${file%.*}.s
 	if [ -f $file.in ]
 	then
 		./out.exe <$file.in >out 2>err
@@ -38,8 +40,6 @@ do
 	done <out
 	fi
 	rm out.exe
-	rm out.o
-	rm out.s
 	rm err
 done
 

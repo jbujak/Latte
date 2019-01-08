@@ -19,8 +19,6 @@ import TypeChecker
 import Ir
 import Asm
 
-import Debug.Trace --TODO remove
-
 data CompileState = CompileState {
     mainBody :: String,
     nextRegister :: Integer,
@@ -55,12 +53,14 @@ compile :: String -> String -> IO ()
 compile filename content = do
     case tryCompile content of
         Right asm ->  do
-            -- TODO use newFilename
-            writeFile "out.s" asm
-            system "nasm -f elf64 -F dwarf -g out.s"
-            system "gcc -no-pie -g out.o lib/runtime.o -o out.exe"
+            writeFile asmFilename asm
+            system ("nasm -f elf64 -F dwarf -g " ++ asmFilename)
+            system ("gcc -no-pie -g " ++ objFilename ++ " lib/runtime.o -o " ++ binFilename)
+            system ("rm " ++ objFilename)
             return ()
-            where newFilename = (changeExtension filename "s")
+            where asmFilename = (changeExtension filename "s")
+                  objFilename = (changeExtension filename "o")
+                  binFilename = (removeExtension filename)
         Left msg -> do
             hPutStrLn stderr msg
             failExit
@@ -70,7 +70,10 @@ failExit = exitWith $ ExitFailure 255
 
 changeExtension :: String -> String -> String
 changeExtension baseFilename newExtension =
-    (fst $ splitExtension baseFilename) ++ "." ++ newExtension
+    (removeExtension baseFilename) ++ "." ++ newExtension
+
+removeExtension :: String -> String
+removeExtension baseFilename = fst $ splitExtension baseFilename
 
 tryCompile :: String -> Either String String
 tryCompile content = do
@@ -78,7 +81,6 @@ tryCompile content = do
     ast <- checkTypes ast
     ir  <- generateIr ast
     asm <- generateAsm ir
-    --TODO remove printing IR
     trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
 
 parse :: String -> Either String Program
