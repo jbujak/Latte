@@ -233,8 +233,8 @@ compareEqual outReg lhs rhs negate = do
     cmp lhs (Reg rhs)
     lahf
     shr RAX zfBit
-    Asm.and RAX (Int 0x1)
-    when negate $ xor RAX (Int 0x1)
+    Asm.and RAX (Int 1)
+    when negate $ xor RAX (Int 1)
     mov (Reg outReg) (Reg RAX)
 
 compareLess :: Register -> Register -> Register -> Bool -> Generate ()
@@ -245,10 +245,10 @@ compareLess outReg lhs rhs negate = do
     mov (Reg RCX) (Reg RAX)
     shr RAX sfBit
     shr RCX ofBit
-    Asm.and RAX (Int 0x1)
-    Asm.and RCX (Int 0x1)
+    Asm.and RAX (Int 1)
+    Asm.and RCX (Int 1)
     xor RAX (Reg RCX)
-    when negate $ xor RAX (Int 0x1)
+    when negate $ xor RAX (Int 1)
     mov (Reg outReg) (Reg RAX)
 
 registerForArgument :: Integer -> Maybe Register
@@ -258,7 +258,7 @@ registerForArgument 2 = Just RDX
 registerForArgument 3 = Just RCX
 registerForArgument 4 = Just R8
 registerForArgument 5 = Just R9
-registerForArgument _ = Nothing --TODO
+registerForArgument _ = Nothing
 
 exitLabel :: Generate String
 exitLabel = do
