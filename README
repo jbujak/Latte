@@ -1,2 +1,17 @@
-* No function overloading
-* intermediate representation: register machine
+# Kompilacja i uruchomienie
+Kompilator można zbudować używając polecenia `make`. Po jego wykonaniu
+w zostanie utworzony plik wykonywalny kompilatora: latc_x86_64.
+
+# Struktura katalogów
+/
+|--src/      folder zawierający pliki źródłowe kompilatora
+|  |
+|  |--bnfc/  folder zawierający gramatykę języka Latte w formacie BNFC
+|
+|--lib/      folder zawierający bibliotekę runtime, jej kod źródłowy i plik
+             Makefile umożliwiający jej zbudowanie
+
+# Rozszerzenia
+W chwili oddawania projektu w pierwszym terminie nie zostały zaimplementowane
+jeszcze żadne rozszerzenia, a jedynie podstawowa wersja kompilatora języka
+Latte do x86_64.

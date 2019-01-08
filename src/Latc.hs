@@ -4,8 +4,6 @@ import System.Environment
 import System.FilePath
 import System.Process
 
-import Text.Show.Pretty
-
 import Control.Monad.State
 import Control.Applicative
 
