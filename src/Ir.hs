@@ -37,7 +37,7 @@ data IrCommand =
       Nop
     | LoadConst Local IrConst
     | Call Local String [Local]
-    | LoadArg Local Integer
+    | LoadArgs [Local]
     | Return (Maybe Local)
     | BinOp Local Local Local BinOpType
     | Goto Label
@@ -207,15 +207,11 @@ generateItem (Init (Ident name) expr) = do
 generateArgs :: [Arg] -> Generate ()
 generateArgs args = do
     modify $ \s -> s { loadedArgs = 0 }
-    forM_ args generateArg
+    args <- forM args generateArg
+    printCommand $ LoadArgs args
 
-generateArg :: Arg -> Generate ()
-generateArg (Ar _ (Ident name)) = do
-    local <- newVariable name
-    argNo <- gets loadedArgs
-    modify $ \s -> s { loadedArgs = argNo + 1 }
-    printCommand $ LoadArg local argNo
-
+generateArg :: Arg -> Generate Local
+generateArg (Ar _ (Ident name)) = newVariable name
 
 generateUnOpExpr :: String -> UnOpType -> Generate ()
 generateUnOpExpr name op = do

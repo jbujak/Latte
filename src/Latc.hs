@@ -81,7 +81,7 @@ tryCompile content = do
     ast <- checkTypes ast
     ir  <- generateIr ast
     asm <- generateAsm ir
-    trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
+    return asm
 
 parse :: String -> Either String Program
 parse content = case pProgram $ myLexer content of

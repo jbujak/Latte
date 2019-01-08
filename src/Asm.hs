@@ -65,8 +65,9 @@ generateAsmFromCommand (Call local name args) = do
     generateLoadArgsToRegs args
     call name
     mov (Loc local) (Reg RAX)
-generateAsmFromCommand (LoadArg local argNo) =
-    loadArgumentFromReg local argNo
+generateAsmFromCommand (LoadArgs []) = return ()
+generateAsmFromCommand (LoadArgs args) =
+    generateLoadArgsToLocals args
 generateAsmFromCommand (Return (Just local)) = do
     mov (Reg RAX) (Loc local)
     exitLabelStr <- exitLabel
@@ -96,7 +97,37 @@ generateLoadArgsToRegs :: [Local] -> Generate()
 generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
     generateLoadArgsInner [] _ = return ()
     generateLoadArgsInner (local:locals) argNo = do
-        loadArgumentToReg local argNo
+        loaded <- loadArgumentToReg local argNo
+        if (loaded) then
+            generateLoadArgsInner locals (argNo + 1)
+        else do
+            when (length (local:locals) `mod` 2 /= 0) (push RAX)
+            generateLoadArgsToStack (local:locals)
+
+generateLoadArgsToStack :: [Local] -> Generate()
+generateLoadArgsToStack [] = return ()
+generateLoadArgsToStack (arg:args) = do
+    generateLoadArgsToStack args
+    mov (Reg R10) (Loc arg)
+    push R10
+
+
+generateLoadArgsToLocals :: [Local] -> Generate ()
+generateLoadArgsToLocals args = generateLoadArgsInner args 0 where
+    generateLoadArgsInner [] _ = return ()
+    generateLoadArgsInner (local:locals) argNo = do
+        loaded <- loadArgumentFromReg local argNo
+        if (loaded) then
+            generateLoadArgsInner locals (argNo + 1)
+        else
+            generateLoadArgsFromStack (local:locals)
+
+generateLoadArgsFromStack :: [Local] -> Generate ()
+generateLoadArgsFromStack args = generateLoadArgsInner args 0 where
+    generateLoadArgsInner [] _ = return ()
+    generateLoadArgsInner (local:locals) argNo = do
+        mov (Reg R10) (Ptr (getStackArg argNo))
+        mov (Loc local) (Reg R10)
         generateLoadArgsInner locals (argNo + 1)
 
 
@@ -154,13 +185,15 @@ stringLabel strNo = "str_" ++ show strNo
 section :: String -> Generate ()
 section name = printStr $ "section " ++ name ++ "\n"
 
-loadArgumentToReg :: Local -> Integer -> Generate ()
+loadArgumentToReg :: Local -> Integer -> Generate Bool
 loadArgumentToReg local argNo = case registerForArgument argNo of
-    Just register -> mov (Reg register) (Loc local)
+    Just register -> mov (Reg register) (Loc local) >> return True
+    Nothing       -> return False
 
-loadArgumentFromReg :: Local -> Integer -> Generate ()
+loadArgumentFromReg :: Local -> Integer -> Generate Bool
 loadArgumentFromReg local argNo = case registerForArgument argNo of
-    Just register -> mov (Loc local) (Reg register)
+    Just register -> mov (Loc local) (Reg register) >> return True
+    Nothing       -> return False
 
 -- binOp semantics: lhs = lhs `op` rhs
 binOp :: Register -> Register -> BinOpType -> Generate ()
@@ -254,6 +287,10 @@ alignStackSize stackSize = 16 * ((stackSize + 15) `div` 16)
 getLocal :: Local -> String
 getLocal local = "[rbp-" ++ show offset ++ "]"
     where offset = local * localSize
+
+getStackArg :: Integer -> String
+getStackArg argNo = "[rbp+" ++ show (offset + 16) ++ "]"
+    where offset = argNo * localSize
 
 localSize :: Integer
 localSize = 8
