@@ -38,14 +38,14 @@ main = do
                 content <- readFile filename
                 compile filename content
             else do
-                hPutStrLn stderr "Incorrect extension"
+                hPutStrLn stderr "ERROR\nIncorrect extension"
                 failExit
         _ -> do
             usage
             failExit
 
 usage :: IO ()
-usage = hPutStrLn stderr $ "usage: ./latc_x86_64 filename.lat"
+usage = hPutStrLn stderr $ "ERROR\nusage: ./latc_x86_64 filename.lat"
 
 compile :: String -> String -> IO ()
 compile filename content = do
@@ -55,12 +55,12 @@ compile filename content = do
             system ("nasm -f elf64 -F dwarf -g " ++ asmFilename)
             system ("gcc -no-pie -g " ++ objFilename ++ " lib/runtime.o -o " ++ binFilename)
             system ("rm " ++ objFilename)
-            return ()
+            hPutStrLn stderr "OK\n"
             where asmFilename = (changeExtension filename "s")
                   objFilename = (changeExtension filename "o")
                   binFilename = (removeExtension filename)
         Left msg -> do
-            hPutStrLn stderr msg
+            hPutStrLn stderr ("ERROR\n" ++ msg)
             failExit
 
 failExit :: IO ()
