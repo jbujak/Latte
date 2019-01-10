@@ -13,6 +13,9 @@ import ErrM
 import AbsLatte
 import Data.List
 
+import Text.Show.Pretty --TODO remove
+import Debug.Trace --TODO remove
+
 import TypeChecker
 import Ir
 import Asm
@@ -79,6 +82,7 @@ tryCompile content = do
     ast <- checkTypes ast
     ir  <- generateIr ast
     asm <- generateAsm ir
+    trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
     return asm
 
 parse :: String -> Either String Program

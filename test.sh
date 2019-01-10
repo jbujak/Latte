@@ -17,6 +17,13 @@ for file in $(ls $GOOD/*.lat)
 do
 	total=$((total+1))
 	./$EXE $file >/dev/null 2>&1
+	code=$?
+    if [ $code != 0 ]
+    then
+		echo -e $file ${RED}ERROR${RESET}
+		failed=$((failed+1))
+        continue
+    fi
     mv ${file%.*} out.exe
     rm ${file%.*}.s
 	if [ -f $file.in ]

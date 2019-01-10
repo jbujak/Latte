@@ -4,9 +4,12 @@ OUT=latc_x86_64
 
 all: $(OUT)
 
-$(OUT): src/*.hs
+$(OUT): src/*.hs src/bnfc/*.hs
 	cd src && ghc -o $(OUT) -i $(addprefix bnfc/,$(GRAMMAR_FILES)) -i *.hs
 	mv src/$(OUT) .
+
+bnfc: src/bnfc/Latte.cf
+	cd src/bnfc && bnfc -m --haskell Latte.cf && $(MAKE)
 
 tags: src/*.hs
 	hasktags .

@@ -30,11 +30,11 @@ Init.      Item ::= Ident "=" Expr ;
 
 separator nonempty Item "," ;
 
-Ass.       Stmt ::= Ident "=" Expr  ";" ;
+Ass.       Stmt ::= LVal "=" Expr  ";" ;
 
-Incr.      Stmt ::= Ident "++"  ";" ;
+Incr.      Stmt ::= LVal "++"  ";" ;
 
-Decr.      Stmt ::= Ident "--"  ";" ;
+Decr.      Stmt ::= LVal "--"  ";" ;
 
 Ret.       Stmt ::= "return" Expr ";" ;
 
@@ -58,6 +58,8 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
+Arr.       Type ::= Type "[]" ;
+
 separator  Type "," ;
 
 -- Type checker types --------------------------------------
@@ -74,12 +76,16 @@ internal TcVoid.      TcType ::= "void" ;
 
 internal TcFun.       TcType ::= TcType "(" [TcType] ")" ;
 
+internal TcArr.       TcType ::= TcType "[]" ;
+
 separator  TcType "," ;
 
 
 -- Expressions ---------------------------------------------
 
-EVar.      Expr6 ::= Ident TcType ;
+ELVal.     Expr6 ::= LVal TcType;
+
+EArrNew.   Expr6 ::= "new" Type "[" Expr "]" TcType ;
 
 ELitInt.   Expr6 ::= Integer TcType ;
 
@@ -108,6 +114,12 @@ EOr.       Expr ::= Expr1 "||" Expr TcType ;
 coercions  Expr 6 ;
 
 separator  Expr "," ;
+
+-- L-values
+
+ArrElem.  LVal ::= Ident "[" Expr "]" TcType;
+
+Var.      LVal ::= Ident TcType;
 
 -- operators -----------------------------------------------
 

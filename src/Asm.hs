@@ -17,7 +17,7 @@ data GenerateState = State {
 
 type Generate a = (StateT GenerateState (Either String)) a
 
-data Value = Reg Register | Loc Local | Int Integer | Ptr String
+data Value = Reg Register | Addr Register | Loc Local | Int Integer | Ptr String
 
 data Register = RAX | RBX | RCX | RDX | RBP | RSP | RSI | RDI | 
                 R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
@@ -92,6 +92,33 @@ generateAsmFromCommand (PrintLabel label) =
 generateAsmFromCommand (Assign dstLocal srcLocal) = do
     mov (Reg R8) (Loc srcLocal)
     mov (Loc dstLocal) (Reg R8)
+generateAsmFromCommand (ArrCreate dstLocal sizeLocal) =  do
+    let (Just firstArg) = registerForArgument 0
+    mov (Reg firstArg) (Loc sizeLocal)
+    inc firstArg
+    imul firstArg (Int localSize)
+    call "malloc"
+    mov (Loc dstLocal) (Reg RAX)
+    mov (Reg R8) (Loc sizeLocal)
+    mov (Addr RAX) (Reg R8)
+generateAsmFromCommand (ArrSet arrLocal indexLocal valLocal) = do
+    mov (Reg R8)  (Loc arrLocal)
+    mov (Reg R9)  (Loc indexLocal)
+    mov (Reg R10) (Loc valLocal)
+    add  R9 (Int 1)
+    imul R9 (Int localSize)
+    add  R8 (Reg R9)
+    mov (Addr R8) (Reg R10)
+generateAsmFromCommand (ArrGet dstLocal arrLocal indexLocal) = do
+    mov (Reg R8) (Loc arrLocal)
+    mov (Reg R9) (Loc indexLocal)
+    add  R9 (Int 1)
+    imul R9 (Int localSize)
+    add  R8 (Reg R9)
+    mov (Reg R10) (Addr R8)
+    mov (Loc dstLocal) (Reg R10)
+
+
 
 generateLoadArgsToRegs :: [Local] -> Generate()
 generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
@@ -164,6 +191,7 @@ externFunctions = do
     extern "error"
     extern "readInt"
     extern "readString"
+    extern "malloc"
     extern strcpy_to_new
     extern strcat_to_new
 
@@ -306,14 +334,18 @@ nop :: Generate ()
 nop = asmLine ["nop"]
 
 mov :: Value -> Value -> Generate ()
-mov (Reg dstReg) (Reg srcReg) = asmLine ["mov", show dstReg, ",", show srcReg]
+mov (Reg dstReg) (Reg srcReg)   = asmLine ["mov", show dstReg, ",", show srcReg]
 mov (Reg dstReg) (Loc srcLocal) = asmLine ["mov", show dstReg, ",", getLocal srcLocal]
-mov (Reg dstReg) (Int srcInt) = asmLine ["mov", show dstReg, ",", show srcInt]
+mov (Reg dstReg) (Int srcInt)   = asmLine ["mov", show dstReg, ",", show srcInt]
 mov (Loc dstLocal) (Reg srcReg) = asmLine ["mov", getLocal dstLocal, ",", show srcReg]
 mov (Loc dstLocal) (Int srcInt) =
     asmLine ["mov", "QWORD", getLocal dstLocal, ",", show srcInt]
 mov (Reg dstReg) (Ptr ptrName) =
     asmLine ["mov", "QWORD", show dstReg, ",", ptrName]
+mov (Addr dstAddr) (Reg srcReg) =
+    asmLine ["mov", "[" ++ show dstAddr ++ "]", ",", show srcReg]
+mov (Reg dstReg) (Addr srcAddr) =
+    asmLine ["mov", show dstReg, ",", "[" ++ show srcAddr ++ "]"]
 
 cmp :: Register -> Value -> Generate ()
 cmp lhs (Int rhs) = asmLine ["cmp", show lhs, ", ", show rhs]

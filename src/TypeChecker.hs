@@ -78,19 +78,21 @@ checkStmt (Decl varType items) = do
     typedItems <- forM items $ checkDecl (typeToTcType varType)
     setReturned False
     return $ Decl varType typedItems
-checkStmt (Ass (Ident name) expr) = do
-    varType <- getVariableType name
-    typedExpr <- expectType varType expr ("right hand side of assignment to " ++ name)
+checkStmt (Ass lval expr) = do
+    (typedLVal, lvalType) <- checkLVal lval
+    typedExpr <- expectType lvalType expr ("right hand side of assignment")
     setReturned False
-    return $ Ass (Ident name) typedExpr
-checkStmt stmt @ (AbsLatte.Incr var @ (Ident name)) = do
-    expectType TcInt (EVar var TcNone) ("variable " ++ name)
+    return $ Ass typedLVal typedExpr
+checkStmt (AbsLatte.Incr lval) = do
+    typedExpr <- expectType TcInt (ELVal lval TcNone) "lvalue"
+    let (ELVal typedLval _) = typedExpr
     setReturned False
-    return stmt
-checkStmt stmt @ (AbsLatte.Decr var @ (Ident name)) = do
-    expectType TcInt (EVar var TcNone) ("variable " ++ name)
+    return $ AbsLatte.Incr typedLval
+checkStmt (AbsLatte.Decr lval) = do
+    typedExpr <- expectType TcInt (ELVal lval TcNone) "lvalue"
+    let (ELVal typedLval _) = typedExpr
     setReturned False
-    return stmt
+    return $ AbsLatte.Decr typedLval
 checkStmt (Ret expr) = do
     currentFunctionName <- gets currentFunction
     currentFunction <- getFunctionType currentFunctionName
@@ -146,10 +148,24 @@ checkDecl varType (Init (Ident name) expr) = do
     typedExpr <- expectType varType expr ("initialization of variable " ++ name)
     return $ Init (Ident name) typedExpr
 
-checkExpr :: Expr -> Check (Expr, TcType)
-checkExpr (EVar (Ident name) _) = do
+checkLVal :: LVal -> Check (LVal, TcType)
+checkLVal (Var (Ident name) _) = do
     varType <- getVariableType name
-    return (EVar (Ident name) varType, varType)
+    return (Var (Ident name) varType, varType)
+checkLVal (ArrElem (Ident name) indexExpr _) = do
+    typedIndexExpr <- expectType TcInt indexExpr "array index"
+    varType <- getVariableType name
+    let (TcArr innerType) = varType
+    return (ArrElem (Ident name) typedIndexExpr innerType, innerType)
+
+checkExpr :: Expr -> Check (Expr, TcType)
+checkExpr (EArrNew arrType size _) = do
+    typedSize <- expectType TcInt size "new array length"
+    return (EArrNew arrType typedSize exprType, exprType) where
+    exprType = TcArr (typeToTcType arrType)
+checkExpr (ELVal lval _) = do
+    (typedLval, lvalType) <- checkLVal lval
+    return (ELVal typedLval lvalType, lvalType)
 checkExpr (ELitInt n _) = return (ELitInt n TcInt, TcInt)
 checkExpr (ELitTrue _) = return (ELitTrue TcBool, TcBool)
 checkExpr (ELitFalse _) = return (ELitFalse TcBool, TcBool)
@@ -298,6 +314,7 @@ typeToTcType Int  = TcInt
 typeToTcType Str  = TcStr
 typeToTcType Bool = TcBool
 typeToTcType Void = TcVoid
+typeToTcType (Arr arrType)  = TcArr (typeToTcType arrType)
 
 reportError :: err -> StateT a (Either err) b
 reportError msg = StateT { runStateT = \s -> Left msg }

@@ -44,6 +44,9 @@ data IrCommand =
     | GotoIf Local Label
     | PrintLabel Label
     | Assign Local Local
+    | ArrCreate Local Local
+    | ArrGet Local Local Local
+    | ArrSet Local Local Local
   deriving Show
 
 data IrConst =
@@ -117,12 +120,17 @@ generateStmt (BStmt (Blk stmts)) = do
         currentFunction = Just $ currentFunctionAfter { variables = variablesBefore }
     }
 generateStmt (Decl _ items) = forM_ items generateItem
-generateStmt (Ass (Ident name) expr) = do
+generateStmt (Ass (Var (Ident name) _) expr) = do
     local <- getVariable name
     result <- generateExpr expr
     printCommand $ Assign local result
-generateStmt (AbsLatte.Incr (Ident name)) = generateUnOpExpr name Ir.Incr
-generateStmt (AbsLatte.Decr (Ident name)) = generateUnOpExpr name Ir.Decr
+generateStmt (Ass (ArrElem (Ident name) indexExpr _) expr) = do
+    arrLocal   <- getVariable name
+    indexLocal <- generateExpr indexExpr
+    exprLocal  <- generateExpr expr
+    printCommand $ ArrSet arrLocal indexLocal exprLocal
+generateStmt (AbsLatte.Incr lval) = generateUnOpExpr lval Ir.Incr
+generateStmt (AbsLatte.Decr lval) = generateUnOpExpr lval Ir.Decr
 generateStmt (Ret expr) = do
     local <- generateExpr expr
     printCommand (Return $ Just local)
@@ -152,10 +160,21 @@ generateStmt (SExp expr) = do
     return ()
 
 generateExpr :: Expr -> Generate Local
-generateExpr (EVar (Ident name) _) = do
+generateExpr (EArrNew _ sizeExpr _) = do
+    sizeLocal <- generateExpr sizeExpr
+    dstLocal  <- newLocal
+    printCommand $ ArrCreate dstLocal sizeLocal
+    return dstLocal
+generateExpr (ELVal (Var (Ident name) _) _) = do
     dstLocal <- newLocal
     srcLocal <- getVariable name
     printCommand $ Assign dstLocal srcLocal
+    return dstLocal
+generateExpr (ELVal (ArrElem (Ident name) indexExpr _) _) = do
+    dstLocal  <- newLocal
+    arrLocal  <- getVariable name
+    indexLocal <- generateExpr indexExpr
+    printCommand $ ArrGet dstLocal arrLocal indexLocal
     return dstLocal
 generateExpr (ELitInt integer _) = do
     local <- newLocal
@@ -213,14 +232,15 @@ generateArgs args = do
 generateArg :: Arg -> Generate Local
 generateArg (Ar _ (Ident name)) = newVariable name
 
-generateUnOpExpr :: String -> UnOpType -> Generate ()
-generateUnOpExpr name op = do
-    local <- getVariable name
+generateUnOpExpr :: LVal -> UnOpType -> Generate ()
+generateUnOpExpr lval op = do
     let binOp = case op of
-            Ir.Incr -> Ir.Add
-            Ir.Decr -> Ir.Sub
-    one <- generateExpr $ ELitInt 1 TcInt
-    printCommand $ BinOp local local one binOp
+            Ir.Incr -> Plus
+            Ir.Decr -> Minus
+    let lvalExpr = ELVal lval (getLValType lval)
+    let oneExpr = ELitInt 1 TcInt
+    let binOpExpr = EAdd lvalExpr binOp oneExpr TcInt
+    generateStmt $ Ass lval binOpExpr
 
 generateBinOpExpr :: Expr -> Expr -> BinOpType -> Generate (Local)
 generateBinOpExpr lhs rhs And = do
@@ -264,6 +284,10 @@ startFunction name = do
         locals = 0,
         variables = []
     })}
+
+getLValType :: LVal -> TcType
+getLValType (Var _ tcType) = tcType
+getLValType (ArrElem _ _ tcType) = tcType
 
 -- printCommand adds command to the begining of list for performance reasons
 -- this will cause commands to be in reverse order during building function
