@@ -1,13 +1,14 @@
 int main() {
-	int[] a;
-	a = new int[3];
-	a[0] = 1;
-	a[1] = a[0];
-	a[1]++;
-	a[2] = a[1] + a[0] + 1;
-	a[2]--;
-	printInt(a[0]);
-	printInt(a[1]);
-	printInt(a[2]);
-	return 0;
+    int[] a;
+    a = new int[3];
+    a[0] = 0;
+    a[1] = a[0];
+    a[1]++;
+    a[2] = a[1] + a[0] + 2;
+    a[2]--;
+    printInt(a[0]);
+    printInt(a[1]);
+    printInt(a[2]);
+    printInt(a.length);
+    return 0;
 }

@@ -117,7 +117,10 @@ generateAsmFromCommand (ArrGet dstLocal arrLocal indexLocal) = do
     add  R8 (Reg R9)
     mov (Reg R10) (Addr R8)
     mov (Loc dstLocal) (Reg R10)
-
+generateAsmFromCommand (ArrLen dstLocal arrLocal) = do
+    mov (Reg R8) (Loc arrLocal)
+    mov (Reg R9) (Addr R8)
+    mov (Loc dstLocal) (Reg R9)
 
 
 generateLoadArgsToRegs :: [Local] -> Generate()
@@ -138,7 +141,6 @@ generateLoadArgsToStack (arg:args) = do
     mov (Reg R10) (Loc arg)
     push R10
 
-
 generateLoadArgsToLocals :: [Local] -> Generate ()
 generateLoadArgsToLocals args = generateLoadArgsInner args 0 where
     generateLoadArgsInner [] _ = return ()
@@ -156,7 +158,6 @@ generateLoadArgsFromStack args = generateLoadArgsInner args 0 where
         mov (Reg R10) (Ptr (getStackArg argNo))
         mov (Loc local) (Reg R10)
         generateLoadArgsInner locals (argNo + 1)
-
 
 -- Asm macros
 

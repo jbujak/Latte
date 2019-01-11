@@ -47,6 +47,7 @@ data IrCommand =
     | ArrCreate Local Local
     | ArrGet Local Local Local
     | ArrSet Local Local Local
+    | ArrLen Local Local
   deriving Show
 
 data IrConst =
@@ -165,6 +166,13 @@ generateExpr (EArrNew _ sizeExpr _) = do
     dstLocal  <- newLocal
     printCommand $ ArrCreate dstLocal sizeLocal
     return dstLocal
+generateExpr (ELVal (ObjField lval (Ident fieldName) _) _) =
+    case (getLValType lval, fieldName) of
+        (TcArr arrType, "length") -> do
+            dstLocal <- newLocal
+            arrLocal <- generateExpr (ELVal lval arrType)
+            printCommand $ ArrLen dstLocal arrLocal
+            return dstLocal
 generateExpr (ELVal (Var (Ident name) _) _) = do
     dstLocal <- newLocal
     srcLocal <- getVariable name
@@ -286,6 +294,7 @@ startFunction name = do
     })}
 
 getLValType :: LVal -> TcType
+getLValType (ObjField _ _ tcType) = tcType
 getLValType (Var _ tcType) = tcType
 getLValType (ArrElem _ _ tcType) = tcType
 

@@ -117,9 +117,11 @@ separator  Expr "," ;
 
 -- L-values
 
-ArrElem.  LVal ::= Ident "[" Expr "]" TcType;
+ObjField.  LVal ::= LVal "." Ident TcType ;
 
-Var.      LVal ::= Ident TcType;
+ArrElem.   LVal ::= Ident "[" Expr "]" TcType ;
+
+Var.       LVal ::= Ident TcType ;
 
 -- operators -----------------------------------------------
 

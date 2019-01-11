@@ -149,6 +149,10 @@ checkDecl varType (Init (Ident name) expr) = do
     return $ Init (Ident name) typedExpr
 
 checkLVal :: LVal -> Check (LVal, TcType)
+checkLVal (ObjField lval (Ident fieldName) _) = do
+    (typedLval, lvalType) <- checkLVal lval
+    innerType <- getFieldType lvalType fieldName
+    return (ObjField typedLval (Ident fieldName) innerType, innerType)
 checkLVal (Var (Ident name) _) = do
     varType <- getVariableType name
     return (Var (Ident name) varType, varType)
@@ -264,6 +268,10 @@ getFunctionType name = do
             case lookup name function of
                 Just funType -> return funType
                 Nothing      -> reportError $ "Unkown function " ++ name
+
+getFieldType :: TcType -> String -> Check TcType
+getFieldType (TcArr _) "length" = return TcInt
+getFieldType _ fieldName = reportError ("unknown field "  ++ fieldName)
 
 getBuiltinFunctionType :: String -> Maybe TcType
 getBuiltinFunctionType "printInt" = Just $ TcFun TcVoid [TcInt]
