@@ -179,9 +179,10 @@ generateExpr (ELVal (Var (Ident name) _) _) = do
     printCommand $ Assign dstLocal srcLocal
     return dstLocal
 generateExpr (ELVal (ArrElem (Ident name) indexExpr _) _) = do
-    dstLocal  <- newLocal
-    arrLocal  <- getVariable name
+    arrLocal <- getVariable name
     indexLocal <- generateExpr indexExpr
+    dstLocal  <- newLocal
+    generateBoundsCheck arrLocal indexLocal
     printCommand $ ArrGet dstLocal arrLocal indexLocal
     return dstLocal
 generateExpr (ELitInt integer _) = do
@@ -280,6 +281,25 @@ generateBinOpExpr lhs rhs binOp = do
     resLocal <- newLocal
     printCommand $ BinOp resLocal lhsLocal rhsLocal binOp
     return resLocal
+
+generateBoundsCheck :: Local -> Local -> Generate ()
+generateBoundsCheck arrLocal indexLocal = do
+    lenLocal <- newLocal
+    zeroLocal <- newLocal
+    boolLocal <- newLocal
+    okLabel <- newLabel
+    errLabel <- newLabel
+    unusedLabel <- newLabel
+    printCommand $ LoadConst zeroLocal (ConstInt 0)
+    printCommand $ BinOp boolLocal indexLocal zeroLocal Lt
+    printCommand $ GotoIf boolLocal errLabel
+    printCommand $ ArrLen lenLocal arrLocal
+    printCommand $ BinOp boolLocal indexLocal lenLocal Gte
+    printCommand $ GotoIf boolLocal errLabel
+    printCommand $ Goto okLabel
+    printCommand $ PrintLabel errLabel
+    printCommand $ Call unusedLabel "error" []
+    printCommand $ PrintLabel okLabel
 
 
 -- Auxiliary functions
