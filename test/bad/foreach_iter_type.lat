@@ -1,0 +1,6 @@
+int main() {
+    string[] s = new string[1];
+    for (int a : s) {
+    }
+    return 0;
+}

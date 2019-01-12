@@ -159,6 +159,26 @@ generateStmt (While expr stmt) = do
 generateStmt (SExp expr) = do
     generateExpr expr
     return ()
+generateStmt (For _ (Ident iterName) arrExpr stmt) = do
+    labelBegin <- newLabel
+    labelEnd <- newLabel
+    lenLocal <- newLocal
+    iterNoLocal <- newLocal
+    condLocal <- newLocal
+    oneLocal <- newLocal
+    arrLocal <- generateExpr arrExpr
+    iterLocal <- newVariable iterName
+    printCommand $ ArrLen lenLocal arrLocal
+    printCommand $ LoadConst iterNoLocal (ConstInt 0)
+    printCommand $ LoadConst oneLocal (ConstInt 1)
+    printCommand $ PrintLabel labelBegin
+    printCommand $ BinOp condLocal iterNoLocal lenLocal Gte
+    printCommand $ GotoIf condLocal labelEnd
+    printCommand $ ArrGet iterLocal arrLocal iterNoLocal
+    generateStmt stmt
+    printCommand $ BinOp iterNoLocal iterNoLocal oneLocal Add
+    printCommand $ Goto labelBegin
+    printCommand $ PrintLabel labelEnd
 
 generateExpr :: Expr -> Generate Local
 generateExpr (EArrNew _ sizeExpr _) = do

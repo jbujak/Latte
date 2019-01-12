@@ -138,6 +138,16 @@ checkStmt (SExp expr) = do
     (typedExpr, _) <- checkExpr expr
     setReturned False
     return $ SExp typedExpr
+checkStmt (For iterType (Ident iterName) arrExpr stmt) = do
+    (typedArrExpr, arrType) <- checkExpr arrExpr
+    case arrType of
+        TcArr innerType -> when (typeToTcType iterType /= innerType)
+            (reportError "Incorrect type of iterator")
+        _ -> reportError "For loop can be used only for arrays"
+    addVariable iterName (typeToTcType iterType)
+    typedStmt <- checkStmt stmt
+    return (For iterType (Ident iterName) typedArrExpr typedStmt)
+
 
 checkDecl :: TcType -> Item -> Check Item
 checkDecl varType decl @ (NoInit (Ident name)) = do

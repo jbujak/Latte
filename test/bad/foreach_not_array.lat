@@ -1,0 +1,6 @@
+int main() {
+    string s;
+    for (int a : s) {
+    }
+    return 0;
+}
