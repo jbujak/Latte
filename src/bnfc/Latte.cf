@@ -6,11 +6,17 @@ Prog.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
+ClassDef.  TopDef ::= "class" Ident "{" [Field] "}" ;
+
 separator nonempty TopDef "" ;
 
 Ar. 	   Arg ::= Type Ident;
 
 separator  Arg "," ;
+
+Field.     Field ::= Type Ident ;
+
+terminator  Field ";" ;
 
 -- statements ----------------------------------------------
 
@@ -62,6 +68,8 @@ Void.      Type ::= "void" ;
 
 Arr.       Type ::= Type "[]" ;
 
+Class.     Type ::= Ident ;
+
 separator  Type "," ;
 
 -- Type checker types --------------------------------------
@@ -80,12 +88,21 @@ internal TcFun.       TcType ::= TcType "(" [TcType] ")" ;
 
 internal TcArr.       TcType ::= TcType "[]" ;
 
+internal TcClass.     TcType ::= "class" String "{" [TcField] "}";
+
 separator  TcType "," ;
 
+TcFieldEmpty.    TcField ::= "" ;
+
+TcField.         TcField ::= String TcType ;
+
+terminator TcField ";" ;
 
 -- Expressions ---------------------------------------------
 
 ELVal.     Expr6 ::= LVal TcType;
+
+EObjNew.   Expr6 ::= "new" Type TcType;
 
 EArrNew.   Expr6 ::= "new" Type "[" Expr "]" TcType ;
 
@@ -121,7 +138,7 @@ separator  Expr "," ;
 
 ObjField.  LVal ::= LVal "." Ident TcType ;
 
-ArrElem.   LVal ::= Ident "[" Expr "]" TcType ;
+ArrElem.   LVal ::= LVal "[" Expr "]" TcType ;
 
 Var.       LVal ::= Ident TcType ;
 

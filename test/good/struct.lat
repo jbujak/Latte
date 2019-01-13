@@ -1,0 +1,24 @@
+class c {
+	int n;
+	string s;
+}
+int main() {
+	c obj = new c;
+	obj.n = 1;
+	obj.s = "asdf";
+
+	printInt(obj.n);
+	printString(obj.s);
+
+	change(obj);
+
+	printInt(obj.n);
+	printString(obj.s);
+
+	return 0;
+}
+
+void change(c arg) {
+	arg.n = arg.n + 1;
+	arg.s = "qwer";
+}

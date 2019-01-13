@@ -48,6 +48,9 @@ data IrCommand =
     | ArrGet Local Local Local
     | ArrSet Local Local Local
     | ArrLen Local Local
+    | ObjCreate Local Integer
+    | ObjGetField Local Local Integer
+    | ObjSetField Local Integer Local
   deriving Show
 
 data IrConst =
@@ -109,6 +112,7 @@ generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
     generateArgs args
     forM_ stmts generateStmt
     endFunction
+generateTopDef (ClassDef _ _) = return ()
 
 generateStmt :: Stmt -> Generate ()
 generateStmt Empty = printCommand Nop
@@ -121,15 +125,7 @@ generateStmt (BStmt (Blk stmts)) = do
         currentFunction = Just $ currentFunctionAfter { variables = variablesBefore }
     }
 generateStmt (Decl _ items) = forM_ items generateItem
-generateStmt (Ass (Var (Ident name) _) expr) = do
-    local <- getVariable name
-    result <- generateExpr expr
-    printCommand $ Assign local result
-generateStmt (Ass (ArrElem (Ident name) indexExpr _) expr) = do
-    arrLocal   <- getVariable name
-    indexLocal <- generateExpr indexExpr
-    exprLocal  <- generateExpr expr
-    printCommand $ ArrSet arrLocal indexLocal exprLocal
+generateStmt (Ass lval expr) = generateSetLVal lval expr
 generateStmt (AbsLatte.Incr lval) = generateUnOpExpr lval Ir.Incr
 generateStmt (AbsLatte.Decr lval) = generateUnOpExpr lval Ir.Decr
 generateStmt (Ret expr) = do
@@ -181,30 +177,16 @@ generateStmt (For _ (Ident iterName) arrExpr stmt) = do
     printCommand $ PrintLabel labelEnd
 
 generateExpr :: Expr -> Generate Local
+generateExpr (EObjNew _ (TcClass _ fields)) = do
+    dstLocal <- newLocal
+    printCommand $ ObjCreate dstLocal (toInteger $ length fields)
+    return dstLocal
 generateExpr (EArrNew _ sizeExpr _) = do
     sizeLocal <- generateExpr sizeExpr
     dstLocal  <- newLocal
     printCommand $ ArrCreate dstLocal sizeLocal
     return dstLocal
-generateExpr (ELVal (ObjField lval (Ident fieldName) _) _) =
-    case (getLValType lval, fieldName) of
-        (TcArr arrType, "length") -> do
-            dstLocal <- newLocal
-            arrLocal <- generateExpr (ELVal lval arrType)
-            printCommand $ ArrLen dstLocal arrLocal
-            return dstLocal
-generateExpr (ELVal (Var (Ident name) _) _) = do
-    dstLocal <- newLocal
-    srcLocal <- getVariable name
-    printCommand $ Assign dstLocal srcLocal
-    return dstLocal
-generateExpr (ELVal (ArrElem (Ident name) indexExpr _) _) = do
-    arrLocal <- getVariable name
-    indexLocal <- generateExpr indexExpr
-    dstLocal  <- newLocal
-    generateBoundsCheck arrLocal indexLocal
-    printCommand $ ArrGet dstLocal arrLocal indexLocal
-    return dstLocal
+generateExpr (ELVal lval _) = generateGetLVal lval
 generateExpr (ELitInt integer _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt integer)
@@ -321,6 +303,49 @@ generateBoundsCheck arrLocal indexLocal = do
     printCommand $ Call unusedLabel "error" []
     printCommand $ PrintLabel okLabel
 
+generateSetLVal :: LVal -> Expr -> Generate ()
+generateSetLVal (ObjField objLVal (Ident fieldName) _) expr = do
+    objLocal <- generateGetLVal objLVal
+    let fieldNo = getFieldNo (getLValType objLVal) fieldName
+    exprLocal <- generateExpr expr
+    printCommand $ ObjSetField objLocal fieldNo exprLocal
+generateSetLVal (ArrElem lval indexExpr _) expr = do
+    arrLocal   <- generateGetLVal lval
+    indexLocal <- generateExpr indexExpr
+    exprLocal  <- generateExpr expr
+    printCommand $ ArrSet arrLocal indexLocal exprLocal
+generateSetLVal (Var (Ident name) _) expr = do
+    local <- getVariable name
+    result <- generateExpr expr
+    printCommand $ Assign local result
+
+generateGetLVal :: LVal -> Generate Local
+generateGetLVal (ObjField objLVal (Ident fieldName) _) =
+    case (getLValType objLVal, fieldName) of
+        (TcArr arrType, "length") -> do
+            dstLocal <- newLocal
+            arrLocal <- generateExpr (ELVal objLVal arrType)
+            printCommand $ ArrLen dstLocal arrLocal
+            return dstLocal
+        (objType @ (TcClass name fields), _) -> do
+            dstLocal <- newLocal
+            objLocal <- generateGetLVal objLVal
+            let fieldNo = getFieldNo objType fieldName
+            printCommand $ ObjGetField dstLocal objLocal fieldNo
+            return dstLocal
+generateGetLVal (ArrElem lval indexExpr _) = do
+    arrLocal <- generateGetLVal lval
+    indexLocal <- generateExpr indexExpr
+    dstLocal  <- newLocal
+    generateBoundsCheck arrLocal indexLocal
+    printCommand $ ArrGet dstLocal arrLocal indexLocal
+    return dstLocal
+generateGetLVal (Var (Ident name) _) = do
+    dstLocal <- newLocal
+    varLocal <- getVariable name
+    printCommand $ Assign dstLocal varLocal
+    return varLocal
+
 
 -- Auxiliary functions
 
@@ -416,6 +441,11 @@ getCurrentFunction = do
     case maybeFunction of
         Just currentFunction -> return currentFunction
         Nothing -> reportError "No current function"
+
+getFieldNo :: TcType -> String -> Integer
+getFieldNo (TcClass _ fields) fieldName = getFieldNoInner fields fieldName 0 where
+    getFieldNoInner ((TcField fieldName _):fields) seekedName acc =
+        if fieldName == seekedName then acc else getFieldNoInner fields seekedName (acc+1)
 
 mulOpToBinOp :: MulOp -> BinOpType
 mulOpToBinOp AbsLatte.Times = Ir.Mul

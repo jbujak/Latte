@@ -17,5 +17,11 @@ int main() {
     for (int x : a) {
         printInt(x);
     }
+    incr(a, 2);
+    printInt(a[2]);
     return 0;
+}
+
+void incr(int[] arg, int n) {
+    arg[n] = arg[n] + 1;
 }

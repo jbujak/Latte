@@ -121,6 +121,21 @@ generateAsmFromCommand (ArrLen dstLocal arrLocal) = do
     mov (Reg R8) (Loc arrLocal)
     mov (Reg R9) (Addr R8)
     mov (Loc dstLocal) (Reg R9)
+generateAsmFromCommand (ObjCreate dstLocal fieldsNo) = do
+    let (Just firstArg) = registerForArgument 0
+    mov (Reg firstArg) (Int $ fieldsNo * localSize)
+    call "malloc"
+    mov (Loc dstLocal) (Reg RAX)
+generateAsmFromCommand (ObjGetField dstLocal objLocal fieldNo) = do
+    mov (Reg R8) (Loc objLocal)
+    add R8 (Int (localSize * fieldNo))
+    mov (Reg R9) (Addr R8)
+    mov (Loc dstLocal) (Reg R9)
+generateAsmFromCommand (ObjSetField objLocal fieldNo srcLocal) = do
+    mov (Reg R8) (Loc objLocal)
+    add R8 (Int (localSize * fieldNo))
+    mov (Reg R9) (Loc srcLocal)
+    mov (Addr R8) (Reg R9)
 
 
 generateLoadArgsToRegs :: [Local] -> Generate()

@@ -14,8 +14,11 @@ data CheckState = State {
     currentFunction :: String,
     variables :: [(String, TcType)],
     innerVariables :: [(String)],
-    returned :: Bool
+    returned :: Bool,
+    classes :: [(String, ClassFields)]
 }
+
+data ClassFields = ClassFields [(String, TcType)] deriving Eq
 
 type Check a = (StateT CheckState (Either String)) a
 
@@ -33,7 +36,8 @@ emptyCheckState = State {
     currentFunction = "",
     variables = [],
     innerVariables = [],
-    returned = False
+    returned = False,
+    classes = []
 }
 
 
@@ -46,9 +50,20 @@ checkProgram (Prog topdefs) = do
     return $ Prog typedTopDefs
 
 addTopDef :: TopDef -> Check ()
-addTopDef (FnDef returnType (Ident name) args _) =
-    let argsTypes = map (\(Ar argType _) -> (typeToTcType argType)) args in
-    addFunction name (TcFun (typeToTcType returnType) argsTypes)
+addTopDef (FnDef returnType (Ident name) args _) = do
+    argsTypes    <- forM args (\(Ar argType _) -> (typeToTcType argType))
+    returnTcType <- typeToTcType returnType
+    addFunction name (TcFun returnTcType argsTypes)
+addTopDef (ClassDef (Ident name) fields) = do
+    fieldsTypes <- forM fields fieldToClassField
+    addClass name (ClassFields fieldsTypes)
+    return ()
+
+fieldToClassField :: Field -> Check (String, TcType)
+fieldToClassField (Field fieldType (Ident fieldName)) = do
+    tcType <- typeToTcType fieldType
+    return (fieldName, tcType)
+    
 
 checkTopDef :: TopDef -> Check TopDef
 checkTopDef (FnDef returnType (Ident name) args block) = do
@@ -59,6 +74,7 @@ checkTopDef (FnDef returnType (Ident name) args block) = do
     when (not funReturned && returnType /= Void) $
         reportError ("Function " ++ name ++ " may not return value")
     return $ FnDef returnType (Ident name) args typedBlock
+checkTopDef classDef @ (ClassDef (Ident name) fields) = return classDef
 
 checkBlock :: Block -> Check Block
 checkBlock (Blk stmts) = do
@@ -75,7 +91,8 @@ checkStmt (BStmt block) = do
     typedBlock <- checkBlock block
     return $ BStmt typedBlock
 checkStmt (Decl varType items) = do
-    typedItems <- forM items $ checkDecl (typeToTcType varType)
+    varTcType <- typeToTcType varType
+    typedItems <- forM items $ checkDecl varTcType
     setReturned False
     return $ Decl varType typedItems
 checkStmt (Ass lval expr) = do
@@ -140,11 +157,12 @@ checkStmt (SExp expr) = do
     return $ SExp typedExpr
 checkStmt (For iterType (Ident iterName) arrExpr stmt) = do
     (typedArrExpr, arrType) <- checkExpr arrExpr
+    iterTcType <- typeToTcType iterType
     case arrType of
-        TcArr innerType -> when (typeToTcType iterType /= innerType)
+        TcArr innerType -> when (iterTcType /= innerType)
             (reportError "Incorrect type of iterator")
         _ -> reportError "For loop can be used only for arrays"
-    addVariable iterName (typeToTcType iterType)
+    addVariable iterName iterTcType
     typedStmt <- checkStmt stmt
     return (For iterType (Ident iterName) typedArrExpr typedStmt)
 
@@ -166,17 +184,23 @@ checkLVal (ObjField lval (Ident fieldName) _) = do
 checkLVal (Var (Ident name) _) = do
     varType <- getVariableType name
     return (Var (Ident name) varType, varType)
-checkLVal (ArrElem (Ident name) indexExpr _) = do
+checkLVal (ArrElem lval indexExpr _) = do
     typedIndexExpr <- expectType TcInt indexExpr "array index"
-    varType <- getVariableType name
-    let (TcArr innerType) = varType
-    return (ArrElem (Ident name) typedIndexExpr innerType, innerType)
+    (typedLval, lvalType) <- checkLVal lval
+    let (TcArr innerType) = lvalType
+    return (ArrElem typedLval typedIndexExpr innerType, innerType)
 
 checkExpr :: Expr -> Check (Expr, TcType)
+checkExpr (EObjNew objType _) = do
+    tcType <- typeToTcType objType
+    case tcType of
+        TcClass name fields -> return (EObjNew objType tcType, tcType)
+        _                   -> reportError "Type of object created by new has to be class"
 checkExpr (EArrNew arrType size _) = do
     typedSize <- expectType TcInt size "new array length"
-    return (EArrNew arrType typedSize exprType, exprType) where
-    exprType = TcArr (typeToTcType arrType)
+    arrTcType <- typeToTcType arrType
+    let exprType = TcArr arrTcType
+    return (EArrNew arrType typedSize exprType, exprType)
 checkExpr (ELVal lval _) = do
     (typedLval, lvalType) <- checkLVal lval
     return (ELVal typedLval lvalType, lvalType)
@@ -269,6 +293,15 @@ addFunction name funType =  do
         functions = (name, funType):functions
     }
 
+addClass :: String -> ClassFields -> Check ()
+addClass name fields =  do
+    classes <- gets classes
+    when (lookup name classes /= Nothing)
+        (reportError ("multiple definitions of class " ++ name))
+    modify $ \s -> s {
+        classes = (name, fields):classes
+    }
+
 getFunctionType :: String -> Check TcType
 getFunctionType name = do
     case getBuiltinFunctionType name of
@@ -279,8 +312,20 @@ getFunctionType name = do
                 Just funType -> return funType
                 Nothing      -> reportError $ "Unkown function " ++ name
 
+getClassFields :: String -> Check [(String, TcType)]
+getClassFields className = do
+    classes <- gets classes
+    case lookup className classes of
+        Nothing          -> reportError ("Unkown class " ++ className)
+        Just (ClassFields classFields) -> return classFields
+
 getFieldType :: TcType -> String -> Check TcType
 getFieldType (TcArr _) "length" = return TcInt
+getFieldType (TcClass className _) fieldName = do
+    classFields <- getClassFields className
+    case lookup fieldName classFields of
+        Nothing        -> reportError ("Unknown field "  ++ fieldName)
+        Just fieldType -> return fieldType
 getFieldType _ fieldName = reportError ("unknown field "  ++ fieldName)
 
 getBuiltinFunctionType :: String -> Maybe TcType
@@ -294,9 +339,10 @@ getBuiltinFunctionType _ = Nothing
 addArg :: Arg -> Check ()
 addArg (Ar argType (Ident name)) = do
     variables <- gets variables
+    argTcType <- typeToTcType argType
     case lookup name variables of
         Just _  -> reportError $ "Repeated argument name " ++ name
-        Nothing -> addVariable name (typeToTcType argType)
+        Nothing -> addVariable name argTcType
 
 addVariable :: String -> TcType -> Check ()
 addVariable name varType =  do
@@ -327,12 +373,18 @@ expectType expectedType expr what = do
         ": expected " ++ (show expectedType) ++ ", got " ++ (show actualType))
     return typedExpr
 
-typeToTcType :: Type -> TcType
-typeToTcType Int  = TcInt
-typeToTcType Str  = TcStr
-typeToTcType Bool = TcBool
-typeToTcType Void = TcVoid
-typeToTcType (Arr arrType)  = TcArr (typeToTcType arrType)
+typeToTcType :: Type -> Check TcType
+typeToTcType Int  = return TcInt
+typeToTcType Str  = return TcStr
+typeToTcType Bool = return TcBool
+typeToTcType Void = return TcVoid
+typeToTcType (Arr arrType) = do
+    arrTcType <- typeToTcType arrType
+    return $ TcArr arrTcType
+typeToTcType (Class (Ident className)) =do
+    fields <- getClassFields className
+    let tcFields = map (\(fieldName, fieldType) -> (TcField fieldName fieldType)) fields
+    return $ TcClass className tcFields
 
 reportError :: err -> StateT a (Either err) b
 reportError msg = StateT { runStateT = \s -> Left msg }
