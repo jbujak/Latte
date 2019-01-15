@@ -1,4 +1,4 @@
-module TypeChecker (checkTypes) where
+module TypeChecker (checkTypes, ClassFields(..), Classes) where
 
 import Control.Monad.State
 import Control.Applicative
@@ -15,20 +15,21 @@ data CheckState = State {
     variables :: [(String, TcType)],
     innerVariables :: [(String)],
     returned :: Bool,
-    classes :: [(String, ClassFields)]
+    classes :: Classes
 }
 
+type Classes = [(String, ClassFields)]
 data ClassFields = ClassFields [(String, TcType)] deriving Eq
 
 type Check a = (StateT CheckState (Either String)) a
 
 -- Monad boilerplate
 
-checkTypes :: Program -> Either String Program
+checkTypes :: Program -> Either String (Program, Classes)
 checkTypes prog = runChecker $ checkProgram prog
 
-runChecker :: Check Program -> Either String Program
-runChecker m = fmap fst $ runStateT m emptyCheckState
+runChecker :: Check Program -> Either String (Program, Classes)
+runChecker m = fmap (\s -> (fst s, classes $ snd s)) $ runStateT m emptyCheckState
 
 emptyCheckState :: CheckState
 emptyCheckState = State {
@@ -194,8 +195,8 @@ checkExpr :: Expr -> Check (Expr, TcType)
 checkExpr (EObjNew objType _) = do
     tcType <- typeToTcType objType
     case tcType of
-        TcClass name fields -> return (EObjNew objType tcType, tcType)
-        _                   -> reportError "Type of object created by new has to be class"
+        TcClass name -> return (EObjNew objType tcType, tcType)
+        _            -> reportError "Type of object created by new has to be class"
 checkExpr (EArrNew arrType size _) = do
     typedSize <- expectType TcInt size "new array length"
     arrTcType <- typeToTcType arrType
@@ -204,6 +205,9 @@ checkExpr (EArrNew arrType size _) = do
 checkExpr (ELVal lval _) = do
     (typedLval, lvalType) <- checkLVal lval
     return (ELVal typedLval lvalType, lvalType)
+checkExpr (ELitNull nullType _) = do
+    nullTcType <- typeToTcType nullType
+    return (ELitNull nullType nullTcType, nullTcType)
 checkExpr (ELitInt n _) = return (ELitInt n TcInt, TcInt)
 checkExpr (ELitTrue _) = return (ELitTrue TcBool, TcBool)
 checkExpr (ELitFalse _) = return (ELitFalse TcBool, TcBool)
@@ -247,10 +251,20 @@ checkExpr (EAdd lhs addop rhs _) = do
 checkExpr (ERel lhs relop rhs _) = do
     checkedLhs <- checkExpr lhs
     let lhsType  = snd checkedLhs
-    if (lhsType == TcBool && (relop == EQU || relop == NE)) then do
-        typedLhs <- expectType TcBool lhs "left comparison operand"
-        typedRhs <- expectType TcBool rhs "right comparison operand"
-        return (ERel typedLhs relop typedRhs TcBool, TcBool)
+    if (relop == EQU || relop == NE) then
+        case lhsType of
+            TcBool -> do
+                typedLhs <- expectType TcBool lhs "left comparison operand"
+                typedRhs <- expectType TcBool rhs "right comparison operand"
+                return (ERel typedLhs relop typedRhs TcBool, TcBool)
+            (TcClass _) -> do
+                typedLhs <- expectType lhsType lhs "left comparison operand"
+                typedRhs <- expectType lhsType rhs "right comparison operand"
+                return (ERel typedLhs relop typedRhs TcBool, TcBool)
+            _ -> do
+                typedLhs <- expectType TcInt lhs "left comparison operand"
+                typedRhs <- expectType TcInt rhs "right comparison operand"
+                return (ERel typedLhs relop typedRhs TcBool, TcBool)
     else do
         typedLhs <- expectType TcInt lhs "left comparison operand"
         typedRhs <- expectType TcInt rhs "right comparison operand"
@@ -316,12 +330,12 @@ getClassFields :: String -> Check [(String, TcType)]
 getClassFields className = do
     classes <- gets classes
     case lookup className classes of
-        Nothing          -> reportError ("Unkown class " ++ className)
+        Nothing          -> reportError ("Unknown class " ++ className)
         Just (ClassFields classFields) -> return classFields
 
 getFieldType :: TcType -> String -> Check TcType
 getFieldType (TcArr _) "length" = return TcInt
-getFieldType (TcClass className _) fieldName = do
+getFieldType (TcClass className) fieldName = do
     classFields <- getClassFields className
     case lookup fieldName classFields of
         Nothing        -> reportError ("Unknown field "  ++ fieldName)
@@ -382,9 +396,7 @@ typeToTcType (Arr arrType) = do
     arrTcType <- typeToTcType arrType
     return $ TcArr arrTcType
 typeToTcType (Class (Ident className)) =do
-    fields <- getClassFields className
-    let tcFields = map (\(fieldName, fieldType) -> (TcField fieldName fieldType)) fields
-    return $ TcClass className tcFields
+    return $ TcClass className
 
 reportError :: err -> StateT a (Either err) b
 reportError msg = StateT { runStateT = \s -> Left msg }

@@ -88,15 +88,9 @@ internal TcFun.       TcType ::= TcType "(" [TcType] ")" ;
 
 internal TcArr.       TcType ::= TcType "[]" ;
 
-internal TcClass.     TcType ::= "class" String "{" [TcField] "}";
+internal TcClass.     TcType ::= "class" String ;
 
 separator  TcType "," ;
-
-TcFieldEmpty.    TcField ::= "" ;
-
-TcField.         TcField ::= String TcType ;
-
-terminator TcField ";" ;
 
 -- Expressions ---------------------------------------------
 
@@ -105,6 +99,8 @@ ELVal.     Expr6 ::= LVal TcType;
 EObjNew.   Expr6 ::= "new" Type TcType;
 
 EArrNew.   Expr6 ::= "new" Type "[" Expr "]" TcType ;
+
+ELitNull.  Expr6 ::= "(" Type ")null" TcType ;
 
 ELitInt.   Expr6 ::= Integer TcType ;
 

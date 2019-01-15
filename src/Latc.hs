@@ -79,8 +79,8 @@ removeExtension baseFilename = fst $ splitExtension baseFilename
 tryCompile :: String -> Either String String
 tryCompile content = do
     ast <- parse content
-    ast <- checkTypes ast
-    ir  <- generateIr ast
+    (ast, classes) <- checkTypes ast
+    ir  <- generateIr ast classes
     asm <- generateAsm ir
     trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
     return asm

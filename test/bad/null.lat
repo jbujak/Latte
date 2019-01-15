@@ -1,0 +1,10 @@
+class c1 {
+ int a;
+}
+class c2 {
+ int a;
+}
+
+int main() {
+    c1 obj = (c2)null;
+}

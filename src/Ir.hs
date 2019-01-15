@@ -6,6 +6,8 @@ module Ir ( Ir(..),
             Local, Label,
             generateIr) where
 
+import TypeChecker
+
 import Control.Monad.State
 import Control.Applicative
 
@@ -71,7 +73,8 @@ data GenerateState = State {
     currentFunction :: Maybe IrFunction,
     nextLabel :: Label,
     loadedArgs :: Integer,
-    strings :: [String]
+    strings :: [String],
+    classes :: Classes
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -79,8 +82,8 @@ type Generate a = (StateT GenerateState (Either String)) a
 
 -- Monad boilerplate
 
-generateIr :: Program -> Either String Ir
-generateIr prog = runGeneration $ generateProgram prog
+generateIr :: Program -> Classes -> Either String Ir
+generateIr prog classes = runGeneration $ generateProgram prog classes
 
 runGeneration :: Generate () -> Either String Ir
 runGeneration m = fmap (createIr . snd) $ runStateT m emptyGenerateState
@@ -97,14 +100,17 @@ emptyGenerateState = State {
     currentFunction = Nothing,
     nextLabel = 0,
     loadedArgs = 0,
-    strings = []
+    strings = [],
+    classes = []
 }
 
 
 -- IR generator implementation
 
-generateProgram :: Program -> Generate ()
-generateProgram (Prog topdefs) = forM_ topdefs generateTopDef
+generateProgram :: Program -> Classes -> Generate ()
+generateProgram (Prog topdefs) classes = do
+    modify $ \s -> s { classes = classes }
+    forM_ topdefs generateTopDef
 
 generateTopDef :: TopDef -> Generate ()
 generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
@@ -177,7 +183,8 @@ generateStmt (For _ (Ident iterName) arrExpr stmt) = do
     printCommand $ PrintLabel labelEnd
 
 generateExpr :: Expr -> Generate Local
-generateExpr (EObjNew _ (TcClass _ fields)) = do
+generateExpr (EObjNew _ (TcClass className)) = do
+    fields <- getClassFields className
     dstLocal <- newLocal
     printCommand $ ObjCreate dstLocal (toInteger $ length fields)
     return dstLocal
@@ -187,6 +194,10 @@ generateExpr (EArrNew _ sizeExpr _) = do
     printCommand $ ArrCreate dstLocal sizeLocal
     return dstLocal
 generateExpr (ELVal lval _) = generateGetLVal lval
+generateExpr (ELitNull _ _) = do
+    nullLocal <- newLocal
+    printCommand $ LoadConst nullLocal (ConstInt 0)
+    return nullLocal
 generateExpr (ELitInt integer _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt integer)
@@ -305,8 +316,8 @@ generateBoundsCheck arrLocal indexLocal = do
 
 generateSetLVal :: LVal -> Expr -> Generate ()
 generateSetLVal (ObjField objLVal (Ident fieldName) _) expr = do
-    objLocal <- generateGetLVal objLVal
-    let fieldNo = getFieldNo (getLValType objLVal) fieldName
+    objLocal  <- generateGetLVal objLVal
+    fieldNo   <- getFieldNo (getLValType objLVal) fieldName
     exprLocal <- generateExpr expr
     printCommand $ ObjSetField objLocal fieldNo exprLocal
 generateSetLVal (ArrElem lval indexExpr _) expr = do
@@ -315,7 +326,7 @@ generateSetLVal (ArrElem lval indexExpr _) expr = do
     exprLocal  <- generateExpr expr
     printCommand $ ArrSet arrLocal indexLocal exprLocal
 generateSetLVal (Var (Ident name) _) expr = do
-    local <- getVariable name
+    local  <- getVariable name
     result <- generateExpr expr
     printCommand $ Assign local result
 
@@ -327,10 +338,10 @@ generateGetLVal (ObjField objLVal (Ident fieldName) _) =
             arrLocal <- generateExpr (ELVal objLVal arrType)
             printCommand $ ArrLen dstLocal arrLocal
             return dstLocal
-        (objType @ (TcClass name fields), _) -> do
+        (objType @ (TcClass name), _) -> do
             dstLocal <- newLocal
             objLocal <- generateGetLVal objLVal
-            let fieldNo = getFieldNo objType fieldName
+            fieldNo  <- getFieldNo objType fieldName
             printCommand $ ObjGetField dstLocal objLocal fieldNo
             return dstLocal
 generateGetLVal (ArrElem lval indexExpr _) = do
@@ -442,10 +453,18 @@ getCurrentFunction = do
         Just currentFunction -> return currentFunction
         Nothing -> reportError "No current function"
 
-getFieldNo :: TcType -> String -> Integer
-getFieldNo (TcClass _ fields) fieldName = getFieldNoInner fields fieldName 0 where
-    getFieldNoInner ((TcField fieldName _):fields) seekedName acc =
+getFieldNo :: TcType -> String -> Generate Integer
+getFieldNo (TcClass className) fieldName = do
+    fields <- getClassFields className
+    return $ getFieldNoInner fields fieldName 0 where
+    getFieldNoInner ((fieldName, _):fields) seekedName acc =
         if fieldName == seekedName then acc else getFieldNoInner fields seekedName (acc+1)
+
+getClassFields :: String -> Generate [(String, TcType)]
+getClassFields className = do
+    classes <- gets classes
+    case lookup className classes of
+        Just (TypeChecker.ClassFields classFields) -> return classFields
 
 mulOpToBinOp :: MulOp -> BinOpType
 mulOpToBinOp AbsLatte.Times = Ir.Mul
