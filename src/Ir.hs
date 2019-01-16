@@ -398,7 +398,12 @@ startMethod className methodName = do
     startFunction $ getMethodName className methodName
     thisLocal <- newLocal
     currentFunction <- getCurrentFunction
-    modify $ \s -> s { currentFunction = Just currentFunction { this = Just thisLocal }}
+    modify $ \s -> s {
+        currentFunction = Just currentFunction {
+            this = Just thisLocal,
+            variables = (("self", thisLocal):(variables currentFunction))
+        }
+    }
 
 startFunction :: String -> Generate ()
 startFunction name = do

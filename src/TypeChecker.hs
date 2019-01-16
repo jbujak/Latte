@@ -345,7 +345,7 @@ beginMethod className methodName = do
     modify $ \s -> s {
         currentFunctionType = methodType,
         currentFunctionName = className ++ "." ++ methodName,
-        variables = fields,
+        variables = (("self", (TcClass className)):fields),
         innerVariables = []
     }
 

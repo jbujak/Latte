@@ -1,0 +1,14 @@
+int main() {
+	c obj = new c;
+	printInt(obj.f());
+	return 0;
+}
+
+class c {
+	int f() {
+		return self.g();
+	}
+	int g() {
+		return 42;
+	}
+}
