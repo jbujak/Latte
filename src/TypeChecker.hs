@@ -127,18 +127,18 @@ checkStmt (Decl varType items) = do
     setReturned False
     return $ Decl varType typedItems
 checkStmt (Ass lval expr) = do
-    (typedLVal, lvalType) <- checkLVal lval
+    (typedLVal, lvalType) <- checkLVal lval True
     typedExpr <- expectType lvalType expr ("right hand side of assignment")
     setReturned False
     return $ Ass typedLVal typedExpr
 checkStmt (AbsLatte.Incr lval) = do
-    typedExpr <- expectType TcInt (ELVal lval TcNone) "lvalue"
-    let (ELVal typedLval _) = typedExpr
+    (typedLval, lvalType) <- checkLVal lval True
+    when (lvalType /= TcInt) (reportError "incremented value must be int")
     setReturned False
     return $ AbsLatte.Incr typedLval
 checkStmt (AbsLatte.Decr lval) = do
-    typedExpr <- expectType TcInt (ELVal lval TcNone) "lvalue"
-    let (ELVal typedLval _) = typedExpr
+    (typedLval, lvalType) <- checkLVal lval True
+    when (lvalType /= TcInt) (reportError "decremented value must be int")
     setReturned False
     return $ AbsLatte.Decr typedLval
 checkStmt (Ret expr) = do
@@ -205,17 +205,18 @@ checkDecl varType (Init (Ident name) expr) = do
     typedExpr <- expectType varType expr ("initialization of variable " ++ name)
     return $ Init (Ident name) typedExpr
 
-checkLVal :: LVal -> Check (LVal, TcType)
-checkLVal (ObjField lval (Ident fieldName) _) = do
-    (typedLval, lvalType) <- checkLVal lval
+checkLVal :: LVal -> Bool -> Check (LVal, TcType)
+checkLVal (ObjField lval (Ident fieldName) _) editable = do
+    (typedLval, lvalType) <- checkLVal lval False
     innerType <- getFieldType lvalType fieldName
+    when editable $ checkEditable lvalType fieldName
     return (ObjField typedLval (Ident fieldName) innerType, innerType)
-checkLVal (Var (Ident name) _) = do
+checkLVal (Var (Ident name) _) _ = do
     varType <- getVariableType name
     return (Var (Ident name) varType, varType)
-checkLVal (ArrElem lval indexExpr _) = do
+checkLVal (ArrElem lval indexExpr _) _ = do
     typedIndexExpr <- expectType TcInt indexExpr "array index"
-    (typedLval, lvalType) <- checkLVal lval
+    (typedLval, lvalType) <- checkLVal lval False
     let (TcArr innerType) = lvalType
     return (ArrElem typedLval typedIndexExpr innerType, innerType)
 
@@ -231,7 +232,7 @@ checkExpr (EArrNew arrType size _) = do
     let exprType = TcArr arrTcType
     return (EArrNew arrType typedSize exprType, exprType)
 checkExpr (ELVal lval _) = do
-    (typedLval, lvalType) <- checkLVal lval
+    (typedLval, lvalType) <- checkLVal lval False
     return (ELVal typedLval lvalType, lvalType)
 checkExpr (ELitNull nullType _) = do
     nullTcType <- typeToTcType nullType
@@ -240,7 +241,7 @@ checkExpr (ELitInt n _) = return (ELitInt n TcInt, TcInt)
 checkExpr (ELitTrue _) = return (ELitTrue TcBool, TcBool)
 checkExpr (ELitFalse _) = return (ELitFalse TcBool, TcBool)
 checkExpr (EMethod lval (Ident methodName) args _) = do
-    (typedLVal, lvalType) <- checkLVal lval
+    (typedLVal, lvalType) <- checkLVal lval False
     case lvalType of
         TcClass className -> do
             methodType <- getMethodType className methodName
@@ -422,6 +423,10 @@ getFieldType (TcClass className) fieldName = do
         Nothing        -> reportError ("Unknown field "  ++ fieldName)
         Just fieldType -> return fieldType
 getFieldType _ fieldName = reportError ("unknown field "  ++ fieldName)
+
+checkEditable :: TcType -> String -> Check ()
+checkEditable (TcArr _) "length" = reportError "cannot change array length"
+checkEditable (TcClass className) fieldName = return ()
 
 getBuiltinFunctionType :: String -> Maybe TcType
 getBuiltinFunctionType "printInt" = Just $ TcFun TcVoid [TcInt]
