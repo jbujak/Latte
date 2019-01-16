@@ -48,6 +48,9 @@ generateAsmFromFunction :: IrFunction -> Generate ()
 generateAsmFromFunction function = do
     functionProlog function
     modify $ \s -> s { currentFunction = name function }
+    case this function of
+        Nothing -> return ()
+        Just thisLocal -> mov (Loc thisLocal) (Reg R10)
     forM_ (commands function) generateAsmFromCommand
     functionEpilog
 
@@ -61,7 +64,10 @@ generateAsmFromCommand (LoadConst local (ConstString stringNo)) = do
     mov (Reg firstArg) (Ptr $ stringLabel stringNo)
     call strcpy_to_new
     mov (Loc local) (Reg RAX)
-generateAsmFromCommand (Call local name args) = do
+generateAsmFromCommand (Call local name args this) = do
+    case this of
+        Nothing -> return ()
+        Just thisLocal -> mov (Reg R10) (Loc thisLocal)
     generateLoadArgsToRegs args
     call name
     mov (Loc local) (Reg RAX)
@@ -99,6 +105,7 @@ generateAsmFromCommand (ArrCreate dstLocal sizeLocal) =  do
     imul firstArg (Int localSize)
     call "malloc"
     mov (Loc dstLocal) (Reg RAX)
+    generateZeroMemory RAX localSize
     mov (Reg R8) (Loc sizeLocal)
     mov (Addr RAX) (Reg R8)
 generateAsmFromCommand (ArrSet arrLocal indexLocal valLocal) = do
@@ -123,9 +130,11 @@ generateAsmFromCommand (ArrLen dstLocal arrLocal) = do
     mov (Loc dstLocal) (Reg R9)
 generateAsmFromCommand (ObjCreate dstLocal fieldsNo) = do
     let (Just firstArg) = registerForArgument 0
-    mov (Reg firstArg) (Int $ fieldsNo * localSize)
+    let objSize = fieldsNo * localSize
+    mov (Reg firstArg) (Int objSize)
     call "malloc"
     mov (Loc dstLocal) (Reg RAX)
+    generateZeroMemory RAX objSize
 generateAsmFromCommand (ObjGetField dstLocal objLocal fieldNo) = do
     mov (Reg R8) (Loc objLocal)
     add R8 (Int (localSize * fieldNo))
@@ -137,6 +146,16 @@ generateAsmFromCommand (ObjSetField objLocal fieldNo srcLocal) = do
     mov (Reg R9) (Loc srcLocal)
     mov (Addr R8) (Reg R9)
 
+generateZeroMemory :: Register -> Integer -> Generate ()
+generateZeroMemory start size = do
+    let (Just firstArg) = registerForArgument 0
+    let (Just secondArg) = registerForArgument 1
+    let (Just thirdArg) = registerForArgument 2
+    mov (Reg firstArg) (Reg start)
+    mov (Reg secondArg) (Int 0)
+    mov (Reg thirdArg) (Int size)
+    call "memset"
+    
 
 generateLoadArgsToRegs :: [Local] -> Generate()
 generateLoadArgsToRegs args = generateLoadArgsInner args 0 where
@@ -208,6 +227,7 @@ externFunctions = do
     extern "readInt"
     extern "readString"
     extern "malloc"
+    extern "memset"
     extern strcpy_to_new
     extern strcat_to_new
 

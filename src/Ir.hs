@@ -32,13 +32,14 @@ data IrFunction = Function {
     name :: String,
     commands :: [IrCommand],
     locals :: Integer,
-    variables :: [(String, Local)]
+    variables :: [(String, Local)],
+    this :: Maybe Local
 } deriving Show
 
 data IrCommand =
       Nop
     | LoadConst Local IrConst
-    | Call Local String [Local]
+    | Call Local String [Local] (Maybe Local)
     | LoadArgs [Local]
     | Return (Maybe Local)
     | BinOp Local Local Local BinOpType
@@ -72,9 +73,9 @@ data GenerateState = State {
     functions :: [IrFunction],
     currentFunction :: Maybe IrFunction,
     nextLabel :: Label,
-    loadedArgs :: Integer,
     strings :: [String],
-    classes :: Classes
+    classes :: Classes,
+    currentClass :: Maybe String
 }
 
 type Generate a = (StateT GenerateState (Either String)) a
@@ -99,9 +100,9 @@ emptyGenerateState = State {
     functions = [],
     currentFunction = Nothing,
     nextLabel = 0,
-    loadedArgs = 0,
     strings = [],
-    classes = []
+    classes = [],
+    currentClass = Nothing
 }
 
 
@@ -113,12 +114,24 @@ generateProgram (Prog topdefs) classes = do
     forM_ topdefs generateTopDef
 
 generateTopDef :: TopDef -> Generate ()
-generateTopDef (FnDef returnType (Ident name) args (Blk stmts)) = do
+generateTopDef (FnDef _ (Ident name) args (Blk stmts)) = do
+    modify $ \s -> s { currentClass = Nothing }
     startFunction name
     generateArgs args
     forM_ stmts generateStmt
     endFunction
-generateTopDef (ClassDef _ _) = return ()
+generateTopDef (ClassDef (Ident className) members) = do
+    classes <- gets classes
+    modify $ \s -> s { currentClass = Just className }
+    forM_ members $ generateClassMember className
+
+generateClassMember :: String -> ClassMember -> Generate ()
+generateClassMember className (Method _ (Ident methodName) args (Blk stmts)) = do
+    startMethod className methodName
+    generateArgs args
+    forM stmts generateStmt
+    endMethod
+generateClassMember _ _ = return ()
 
 generateStmt :: Stmt -> Generate ()
 generateStmt Empty = printCommand Nop
@@ -210,11 +223,19 @@ generateExpr (ELitFalse _) = do
     local <- newLocal
     printCommand $ LoadConst local (ConstInt 0)
     return local
-generateExpr (EApp (Ident funName) expr _) = do
-    argsLocals <- forM expr generateExpr
-    local <- newLocal
-    printCommand $ Call local funName argsLocals
-    return local
+generateExpr (EMethod lval (Ident methodName) args _) = do
+    let (TcClass className) = getLValType lval
+    obj <- generateGetLVal lval
+    argsLocals <- forM args generateExpr
+    retLocal <- newLocal
+    let funName = getMethodName className methodName
+    printCommand $ Call retLocal funName argsLocals (Just obj)
+    return retLocal
+generateExpr (EApp (Ident funName) args _) = do
+    argsLocals <- forM args generateExpr
+    retLocal <- newLocal
+    printCommand $ Call retLocal funName argsLocals Nothing
+    return retLocal
 generateExpr (EString string _) = newString string
 generateExpr (Neg expr _) = generateBinOpExpr (ELitInt (-1) TcInt) expr Ir.Mul
 generateExpr (Not expr _) = do
@@ -247,7 +268,6 @@ generateItem (Init (Ident name) expr) = do
 
 generateArgs :: [Arg] -> Generate ()
 generateArgs args = do
-    modify $ \s -> s { loadedArgs = 0 }
     args <- forM args generateArg
     printCommand $ LoadArgs args
 
@@ -311,7 +331,7 @@ generateBoundsCheck arrLocal indexLocal = do
     printCommand $ GotoIf boolLocal errLabel
     printCommand $ Goto okLabel
     printCommand $ PrintLabel errLabel
-    printCommand $ Call unusedLabel "error" []
+    printCommand $ Call unusedLabel "error" [] Nothing
     printCommand $ PrintLabel okLabel
 
 generateSetLVal :: LVal -> Expr -> Generate ()
@@ -326,9 +346,16 @@ generateSetLVal (ArrElem lval indexExpr _) expr = do
     exprLocal  <- generateExpr expr
     printCommand $ ArrSet arrLocal indexLocal exprLocal
 generateSetLVal (Var (Ident name) _) expr = do
-    local  <- getVariable name
+    var <- getVariable name
     result <- generateExpr expr
-    printCommand $ Assign local result
+    case var of
+        Just varLocal -> printCommand $ Assign varLocal result
+        Nothing       -> do
+            currentFunction <- getCurrentFunction
+            currentClass <- gets currentClass
+            let (Just className, Just thisLocal) = (currentClass, this currentFunction)
+            fieldNo <- getFieldNo (TcClass className) name
+            printCommand $ ObjSetField thisLocal fieldNo result
 
 generateGetLVal :: LVal -> Generate Local
 generateGetLVal (ObjField objLVal (Ident fieldName) _) =
@@ -352,13 +379,26 @@ generateGetLVal (ArrElem lval indexExpr _) = do
     printCommand $ ArrGet dstLocal arrLocal indexLocal
     return dstLocal
 generateGetLVal (Var (Ident name) _) = do
-    dstLocal <- newLocal
-    varLocal <- getVariable name
-    printCommand $ Assign dstLocal varLocal
-    return varLocal
+    var <- getVariable name
+    case var of
+        Just varLocal -> return varLocal
+        Nothing       -> do
+            dstLocal  <- newLocal
+            thisLocal <- getThis
+            fieldNo   <- getThisFieldNo name
+            printCommand $ ObjGetField dstLocal thisLocal fieldNo
+            return dstLocal
+
 
 
 -- Auxiliary functions
+
+startMethod :: String -> String -> Generate ()
+startMethod className methodName = do
+    startFunction $ getMethodName className methodName
+    thisLocal <- newLocal
+    currentFunction <- getCurrentFunction
+    modify $ \s -> s { currentFunction = Just currentFunction { this = Just thisLocal }}
 
 startFunction :: String -> Generate ()
 startFunction name = do
@@ -366,7 +406,8 @@ startFunction name = do
         name = name,
         commands = [],
         locals = 0,
-        variables = []
+        variables = [],
+        this = Nothing
     })}
 
 getLValType :: LVal -> TcType
@@ -385,6 +426,9 @@ printCommand cmd = do
         }
     }
     return ()
+
+endMethod :: Generate ()
+endMethod = endFunction
 
 endFunction :: Generate ()
 endFunction = do
@@ -439,12 +483,10 @@ newLabel = do
     }
     return label
 
-getVariable :: String -> Generate Local
+getVariable :: String -> Generate (Maybe Local)
 getVariable name = do
     function <- getCurrentFunction
-    case lookup name $ variables function of
-        Nothing    -> reportError "Unknown variable"
-        Just local -> return local
+    return $ lookup name (variables function)
 
 getCurrentFunction :: Generate IrFunction
 getCurrentFunction = do
@@ -464,7 +506,23 @@ getClassFields :: String -> Generate [(String, TcType)]
 getClassFields className = do
     classes <- gets classes
     case lookup className classes of
-        Just ((TypeChecker.ClassFields classFields), _) -> return classFields
+        Just ((ClassFields classFields), _) -> return classFields
+
+getThis :: Generate Local
+getThis = do
+    currentFunction <- getCurrentFunction
+    let (Just thisLocal) = (this currentFunction)
+    return thisLocal
+
+getThisFieldNo :: String -> Generate Integer
+getThisFieldNo fieldName = do
+    currentClass <- gets currentClass
+    let (Just className) = currentClass
+    fieldNo <- getFieldNo (TcClass className) fieldName
+    return fieldNo
+
+getMethodName :: String -> String -> String
+getMethodName className methodName = "_latte_" ++ className ++ "__" ++ methodName
 
 mulOpToBinOp :: MulOp -> BinOpType
 mulOpToBinOp AbsLatte.Times = Ir.Mul
