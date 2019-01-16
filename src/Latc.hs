@@ -82,7 +82,7 @@ tryCompile content = do
     (ast, classes) <- checkTypes ast
     ir  <- generateIr ast classes
     asm <- generateAsm ir
-    trace ((ppShow ir) ++ "\n\n" ++ asm) (return asm)
+    trace ((ppShow ir) ++ "\n\n" ++ (ppShow classes) ++ "\n\n" ++ asm) (return asm)
     return asm
 
 parse :: String -> Either String Program

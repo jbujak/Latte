@@ -21,8 +21,8 @@ data CheckState = State {
 }
 
 type Classes = [(String, (ClassFields, ClassMethods))]
-data ClassFields = ClassFields [(String, TcType)] deriving Eq
-data ClassMethods = ClassMethods [(String, (TcType, String))] deriving Eq
+data ClassFields = ClassFields [(String, TcType)] deriving (Eq, Show)
+data ClassMethods = ClassMethods [(String, (TcType, String))] deriving (Eq, Show)
 
 type Check a = (StateT CheckState (Either String)) a
 
@@ -53,6 +53,7 @@ checkProgram :: Program -> Check Program
 checkProgram (Prog topdefs) = do
     forM_ topdefs addTopDef
     extendClasses
+    classes <- gets classes
     typedTopDefs <- forM topdefs checkTopDef
     return $ Prog typedTopDefs
 
@@ -103,9 +104,25 @@ extendClass className = do
             superclassMethods <- getClassMethods superclass
             classFields  <- getClassFields  className
             classMethods <- getClassMethods className
+            let superclassFieldsNames  = map fst superclassFields
+            let superclassMethodsNames = map fst superclassMethods
+            let newSuperclassFields  = map (\(name, field) ->
+                    case lookup name classFields of
+                        Nothing -> (name, field)
+                        Just classField -> (name, classField)
+                    ) superclassFields
+            let newSuperclassMethods = map (\(name, method) ->
+                    case lookup name classMethods of
+                        Nothing -> (name, method)
+                        Just classMethod -> (name, classMethod)
+                    ) superclassMethods
+            let newClassFields  = filter (\(name,  _) ->
+                    not $ elem name superclassFieldsNames)  classFields
+            let newClassMethods = filter (\(name, _) ->
+                    not $ elem name superclassMethodsNames) classMethods
             replaceClass className
-                (ClassFields  $ superclassFields  ++ classFields)
-                (ClassMethods $ superclassMethods ++ classMethods)
+                (ClassFields  $ newSuperclassFields  ++ newClassFields)
+                (ClassMethods $ newSuperclassMethods ++ newClassMethods)
     
 
 checkTopDef :: TopDef -> Check TopDef
@@ -298,9 +315,9 @@ checkExpr (EApp (Ident funName) args _) = do
         ("argument types for function " ++ funName ++ " does not match")
     return (EApp (Ident funName) typedArgs retType, retType)
 checkExpr (EString string _) = return (EString string TcStr, TcStr)
-checkExpr (Neg expr _) = do
+checkExpr (AbsLatte.Neg expr _) = do
     typedExpr <- expectType TcInt expr "negation argument"
-    return (Neg typedExpr TcInt, TcInt)
+    return (AbsLatte.Neg typedExpr TcInt, TcInt)
 checkExpr (Not expr _) = do
     typedExpr <- expectType TcBool expr "negation argument"
     return (Not typedExpr TcBool, TcBool)

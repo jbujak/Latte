@@ -39,7 +39,8 @@ data IrFunction = Function {
 data IrCommand =
       Nop
     | LoadConst Local IrConst
-    | Call Local String [Local] (Maybe Local)
+    | Call Local String [Local]
+    | VCall Local Integer [Local] Local
     | LoadArgs [Local]
     | Return (Maybe Local)
     | BinOp Local Local Local BinOpType
@@ -51,7 +52,7 @@ data IrCommand =
     | ArrGet Local Local Local
     | ArrSet Local Local Local
     | ArrLen Local Local
-    | ObjCreate Local Integer
+    | ObjCreate Local Integer [String]
     | ObjGetField Local Local Integer
     | ObjSetField Local Integer Local
   deriving Show
@@ -199,7 +200,9 @@ generateExpr :: Expr -> Generate Local
 generateExpr (EObjNew _ (TcClass className)) = do
     fields <- getClassFields className
     dstLocal <- newLocal
-    printCommand $ ObjCreate dstLocal (toInteger $ length fields)
+    methods <- getClassMethods className
+    methodsNames <- forM methods (\(name, _) -> getMethodName className name)
+    printCommand $ ObjCreate dstLocal (toInteger $ length fields) methodsNames
     return dstLocal
 generateExpr (EArrNew _ sizeExpr _) = do
     sizeLocal <- generateExpr sizeExpr
@@ -224,17 +227,18 @@ generateExpr (ELitFalse _) = do
     printCommand $ LoadConst local (ConstInt 0)
     return local
 generateExpr (EMethod lval (Ident methodName) args _) = do
-    let (TcClass className) = getLValType lval
-    obj <- generateGetLVal lval
+    let objType @ (TcClass className) = getLValType lval
+    objLocal <- generateGetLVal lval
     argsLocals <- forM args generateExpr
     retLocal <- newLocal
-    funName <- getMethodName className methodName
-    printCommand $ Call retLocal funName argsLocals (Just obj)
+    methodNo <- getMethodNo objType methodName
+    fields <- getClassFields className
+    printCommand $ VCall retLocal methodNo argsLocals objLocal
     return retLocal
 generateExpr (EApp (Ident funName) args _) = do
     argsLocals <- forM args generateExpr
     retLocal <- newLocal
-    printCommand $ Call retLocal funName argsLocals Nothing
+    printCommand $ Call retLocal funName argsLocals
     return retLocal
 generateExpr (EString string _) = newString string
 generateExpr (Neg expr _) = generateBinOpExpr (ELitInt (-1) TcInt) expr Ir.Mul
@@ -331,7 +335,7 @@ generateBoundsCheck arrLocal indexLocal = do
     printCommand $ GotoIf boolLocal errLabel
     printCommand $ Goto okLabel
     printCommand $ PrintLabel errLabel
-    printCommand $ Call unusedLabel "error" [] Nothing
+    printCommand $ Call unusedLabel "error" []
     printCommand $ PrintLabel okLabel
 
 generateSetLVal :: LVal -> Expr -> Generate ()
@@ -507,6 +511,14 @@ getFieldNo (TcClass className) fieldName = do
     return $ getFieldNoInner fields fieldName 0 where
     getFieldNoInner ((fieldName, _):fields) seekedName acc =
         if fieldName == seekedName then acc else getFieldNoInner fields seekedName (acc+1)
+
+getMethodNo :: TcType -> String -> Generate Integer
+getMethodNo (TcClass className) methodName = do
+    methods <- getClassMethods className
+    return $ getMethodNoInner methods methodName 0 where
+    getMethodNoInner ((methodName, _):methods) seekedName acc =
+        if methodName == seekedName then acc else
+                getMethodNoInner methods seekedName (acc+1)
 
 getClassFields :: String -> Generate [(String, TcType)]
 getClassFields className = do

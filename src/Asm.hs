@@ -64,12 +64,16 @@ generateAsmFromCommand (LoadConst local (ConstString stringNo)) = do
     mov (Reg firstArg) (Ptr $ stringLabel stringNo)
     call strcpy_to_new
     mov (Loc local) (Reg RAX)
-generateAsmFromCommand (Call local name args this) = do
-    case this of
-        Nothing -> return ()
-        Just thisLocal -> mov (Reg R10) (Loc thisLocal)
+generateAsmFromCommand (Call local name args) = do
     generateLoadArgsToRegs args
     call name
+    mov (Loc local) (Reg RAX)
+generateAsmFromCommand (VCall local methodNo args thisLocal) = do
+    mov (Reg R10) (Loc thisLocal)
+    generateLoadArgsToRegs args
+    mov (Reg R11) (Addr R10)
+    add R11 (Int $  methodNo * localSize)
+    callReg R11
     mov (Loc local) (Reg RAX)
 generateAsmFromCommand (LoadArgs []) = return ()
 generateAsmFromCommand (LoadArgs args) =
@@ -128,21 +132,26 @@ generateAsmFromCommand (ArrLen dstLocal arrLocal) = do
     mov (Reg R8) (Loc arrLocal)
     mov (Reg R9) (Addr R8)
     mov (Loc dstLocal) (Reg R9)
-generateAsmFromCommand (ObjCreate dstLocal fieldsNo) = do
+generateAsmFromCommand (ObjCreate dstLocal fieldsNo methods) = do
     let (Just firstArg) = registerForArgument 0
-    let objSize = fieldsNo * localSize
+    let objSize = (toInteger(length methods) + fieldsNo + 1) * localSize
     mov (Reg firstArg) (Int objSize)
     call "malloc"
     mov (Loc dstLocal) (Reg RAX)
     generateZeroMemory RAX objSize
+    mov (Reg R10) (Loc dstLocal)
+    mov (Reg R11) (Reg R10)
+    add R10 (Int $ (fieldsNo + 1) * localSize)
+    mov (Addr R11) (Reg R10)
+    generateFillVtable R10 methods
 generateAsmFromCommand (ObjGetField dstLocal objLocal fieldNo) = do
     mov (Reg R8) (Loc objLocal)
-    add R8 (Int (localSize * fieldNo))
+    add R8 (Int (localSize * (fieldNo + 1)))
     mov (Reg R9) (Addr R8)
     mov (Loc dstLocal) (Reg R9)
 generateAsmFromCommand (ObjSetField objLocal fieldNo srcLocal) = do
     mov (Reg R8) (Loc objLocal)
-    add R8 (Int (localSize * fieldNo))
+    add R8 (Int (localSize * (fieldNo + 1)))
     mov (Reg R9) (Loc srcLocal)
     mov (Addr R8) (Reg R9)
 
@@ -155,6 +164,13 @@ generateZeroMemory start size = do
     mov (Reg secondArg) (Int 0)
     mov (Reg thirdArg) (Int size)
     call "memset"
+
+generateFillVtable :: Register -> [String] -> Generate ()
+generateFillVtable vtableReg [] = return ()
+generateFillVtable vtableReg (method:methods) = do
+    mov (Addr vtableReg) (Ptr method)
+    add vtableReg (Int localSize)
+    generateFillVtable vtableReg methods
     
 
 generateLoadArgsToRegs :: [Local] -> Generate()
@@ -380,6 +396,8 @@ mov (Reg dstReg) (Ptr ptrName) =
     asmLine ["mov", "QWORD", show dstReg, ",", ptrName]
 mov (Addr dstAddr) (Reg srcReg) =
     asmLine ["mov", "[" ++ show dstAddr ++ "]", ",", show srcReg]
+mov (Addr dstAddr) (Ptr ptrName) =
+    asmLine ["mov", "QWORD", "[" ++ show dstAddr ++ "]", ",", ptrName]
 mov (Reg dstReg) (Addr srcAddr) =
     asmLine ["mov", show dstReg, ",", "[" ++ show srcAddr ++ "]"]
 
@@ -435,6 +453,9 @@ xor lhs rhs = asmBinOp "xor" lhs rhs
 
 call :: String -> Generate ()
 call funName = asmLine ["call", funName]
+
+callReg :: Register -> Generate ()
+callReg reg = asmLine ["call", "[", show reg, "]"]
 
 lahf :: Generate ()
 lahf = asmLine ["lahf"]
