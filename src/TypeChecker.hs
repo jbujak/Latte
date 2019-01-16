@@ -90,7 +90,7 @@ checkTopDef (FnDef returnType (Ident name) args block) = do
     typedBlock  <- checkBlock block
     funReturned <- gets returned
     when (not funReturned && returnType /= Void) $
-        reportError ("Function " ++ name ++ " may not return value")
+        reportError "function may not return value"
     return $ FnDef returnType (Ident name) args typedBlock
 checkTopDef (ClassDef (Ident name) members) = do
     typedMembers <- forM members $ checkMember name
@@ -151,7 +151,7 @@ checkStmt VRet = do
     currentFunctionType <- gets currentFunctionType
     let (TcFun retType _) = currentFunctionType
     when (retType /= TcVoid) $
-        reportError ("function has to return value")
+        reportError "function has to return value"
     setReturned False
     return VRet
 checkStmt (Cond expr stmt) = do
@@ -189,8 +189,8 @@ checkStmt (For iterType (Ident iterName) arrExpr stmt) = do
     iterTcType <- typeToTcType iterType
     case arrType of
         TcArr innerType -> when (iterTcType /= innerType)
-            (reportError "Incorrect type of iterator")
-        _ -> reportError "For loop can be used only for arrays"
+            (reportError "incorrect type of iterator")
+        _ -> reportError "for loop can be used only for arrays"
     addVariable iterName iterTcType
     typedStmt <- checkStmt stmt
     return (For iterType (Ident iterName) typedArrExpr typedStmt)
@@ -224,7 +224,7 @@ checkExpr (EObjNew objType _) = do
     tcType <- typeToTcType objType
     case tcType of
         TcClass name -> return (EObjNew objType tcType, tcType)
-        _            -> reportError "Type of object created by new has to be class"
+        _            -> reportError "type of object created by new has to be class"
 checkExpr (EArrNew arrType size _) = do
     typedSize <- expectType TcInt size "new array length"
     arrTcType <- typeToTcType arrType
@@ -247,7 +247,7 @@ checkExpr (EMethod lval (Ident methodName) args _) = do
             let fullName = className ++ "." ++ methodName
             let (TcFun retType methodArgTypes) = methodType
             when ((length args) /= (length methodArgTypes)) $
-                reportError ("Incorrect number of arguments for method " ++ fullName)
+                reportError "incorrect number of arguments"
             checkedArgs <- forM args checkExpr
             let typedArgs = map fst checkedArgs
             let argTypes  = map snd checkedArgs
@@ -255,17 +255,17 @@ checkExpr (EMethod lval (Ident methodName) args _) = do
                 ("Argument types for method " ++ fullName ++ " does not match")
             return (EMethod typedLVal (Ident methodName) typedArgs retType,
                 retType)
-        _ -> reportError "Methods can only be called for object"
+        _ -> reportError "methods can only be called for object"
 checkExpr (EApp (Ident funName) args _) = do
     funType <- getFunctionType funName
     let (TcFun retType funArgTypes) = funType
     when ((length args) /= (length funArgTypes)) $
-        reportError ("Incorrect number of arguments for function " ++ funName)
+        reportError "incorrect number of arguments"
     checkedArgs <- forM args checkExpr
     let typedArgs = map fst checkedArgs
     let argTypes  = map snd checkedArgs
     when (argTypes /= funArgTypes) $ reportError
-        ("Argument types for function " ++ funName ++ " does not match")
+        ("argument types for function " ++ funName ++ " does not match")
     return (EApp (Ident funName) typedArgs retType, retType)
 checkExpr (EString string _) = return (EString string TcStr, TcStr)
 checkExpr (Neg expr _) = do
@@ -290,7 +290,7 @@ checkExpr (EAdd lhs addop rhs _) = do
         typedRhs <- expectType TcStr rhs "right addition operand"
         return (EAdd typedLhs addop typedRhs TcStr, TcStr)
     else reportError
-        ("Incorrect type of left addidtion operand: expected " ++ show TcInt ++ " or " ++
+        ("incorrect type of left addidtion operand: expected " ++ show TcInt ++ " or " ++
             show TcStr ++ ", got " ++ show lhsType)
 
 checkExpr (ERel lhs relop rhs _) = do
@@ -479,5 +479,10 @@ typeToTcType (Arr arrType) = do
 typeToTcType (Class (Ident className)) =do
     return $ TcClass className
 
-reportError :: err -> StateT a (Either err) b
-reportError msg = StateT { runStateT = \s -> Left msg }
+reportError :: String -> StateT CheckState (Either String) b
+reportError msg = StateT {
+    runStateT = \s -> if (currentFunctionName s) == "" then
+            Left ("Type error: " ++ msg)
+        else
+            Left ("Type error in function " ++ (currentFunctionName s) ++ ": " ++ msg)
+}
