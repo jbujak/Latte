@@ -191,8 +191,12 @@ checkStmt (For iterType (Ident iterName) arrExpr stmt) = do
         TcArr innerType -> when (iterTcType /= innerType)
             (reportError "incorrect type of iterator")
         _ -> reportError "for loop can be used only for arrays"
+    vars <- gets variables
+    innerVars <- gets innerVariables
+    modify $ \s -> s { innerVariables = [] }
     addVariable iterName iterTcType
     typedStmt <- checkStmt stmt
+    modify $ \s -> s { variables = vars, innerVariables = innerVars }
     return (For iterType (Ident iterName) typedArrExpr typedStmt)
 
 
@@ -448,7 +452,7 @@ addVariable :: String -> TcType -> Check ()
 addVariable name varType =  do
     variables <- gets variables
     innerVariables <- gets innerVariables
-    when (elem name innerVariables) (reportError $ "Multiple declarations of variable " ++ name)
+    when (elem name innerVariables) (reportError $ "multiple declarations of variable " ++ name)
     modify $ \s -> s {
             variables = (name, varType):variables,
             innerVariables = name:innerVariables
