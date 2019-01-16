@@ -6,7 +6,7 @@ Prog.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
-ClassDef.  TopDef ::= "class" Ident "{" [Field] "}" ;
+ClassDef.  TopDef ::= "class" Ident "{" [ClassMember] "}" ;
 
 separator nonempty TopDef "" ;
 
@@ -14,9 +14,11 @@ Ar. 	   Arg ::= Type Ident;
 
 separator  Arg "," ;
 
-Field.     Field ::= Type Ident ;
+Field.     ClassMember ::= Type Ident ";" ;
 
-terminator  Field ";" ;
+Method.    ClassMember ::= Type Ident "(" [Arg] ")" Block ;
+
+separator  ClassMember "" ;
 
 -- statements ----------------------------------------------
 
@@ -107,6 +109,8 @@ ELitInt.   Expr6 ::= Integer TcType ;
 ELitTrue.  Expr6 ::= "true" TcType ;
 
 ELitFalse. Expr6 ::= "false" TcType ;
+
+EMethod.   Expr6 ::= LVal "." Ident "(" [Expr] ")" TcType ;
 
 EApp.      Expr6 ::= Ident "(" [Expr] ")" TcType ;
 

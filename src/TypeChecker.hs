@@ -1,4 +1,4 @@
-module TypeChecker (checkTypes, ClassFields(..), Classes) where
+module TypeChecker (checkTypes, Classes, ClassFields(..), ClassMethods(..)) where
 
 import Control.Monad.State
 import Control.Applicative
@@ -11,15 +11,17 @@ import Data.List
 
 data CheckState = State {
     functions :: [(String, TcType)],
-    currentFunction :: String,
+    currentFunctionName :: String,
+    currentFunctionType :: TcType,
     variables :: [(String, TcType)],
     innerVariables :: [(String)],
     returned :: Bool,
     classes :: Classes
 }
 
-type Classes = [(String, ClassFields)]
+type Classes = [(String, (ClassFields, ClassMethods))]
 data ClassFields = ClassFields [(String, TcType)] deriving Eq
+data ClassMethods = ClassMethods [(String, TcType)] deriving Eq
 
 type Check a = (StateT CheckState (Either String)) a
 
@@ -34,7 +36,8 @@ runChecker m = fmap (\s -> (fst s, classes $ snd s)) $ runStateT m emptyCheckSta
 emptyCheckState :: CheckState
 emptyCheckState = State {
     functions = [],
-    currentFunction = "",
+    currentFunctionName = "",
+    currentFunctionType = TcNone,
     variables = [],
     innerVariables = [],
     returned = False,
@@ -55,15 +58,29 @@ addTopDef (FnDef returnType (Ident name) args _) = do
     argsTypes    <- forM args (\(Ar argType _) -> (typeToTcType argType))
     returnTcType <- typeToTcType returnType
     addFunction name (TcFun returnTcType argsTypes)
-addTopDef (ClassDef (Ident name) fields) = do
-    fieldsTypes <- forM fields fieldToClassField
-    addClass name (ClassFields fieldsTypes)
+addTopDef (ClassDef (Ident name) members) = do
+    membersTypes  <- forM members memberToClassField
+    let fieldsTypes  = filter isField membersTypes
+    let methodsTypes = filter isMethod membersTypes
+    addClass name (ClassFields fieldsTypes) (ClassMethods methodsTypes)
     return ()
 
-fieldToClassField :: Field -> Check (String, TcType)
-fieldToClassField (Field fieldType (Ident fieldName)) = do
+memberToClassField :: ClassMember -> Check (String, TcType)
+memberToClassField (Field fieldType (Ident fieldName)) = do
     tcType <- typeToTcType fieldType
     return (fieldName, tcType)
+memberToClassField (Method returnType (Ident methodName) args block) = do
+    argsTypes    <- forM args (\(Ar argType _) -> (typeToTcType argType))
+    returnTcType <- typeToTcType returnType
+    return (methodName, TcFun returnTcType argsTypes)
+
+isField :: (String, TcType) -> Bool
+isField (_, (TcFun _ _)) = False
+isField (_, _) = True
+
+isMethod :: (String, TcType) -> Bool
+isMethod (_, (TcFun _ _ )) = True
+isMethod (_, _) = False
     
 
 checkTopDef :: TopDef -> Check TopDef
@@ -75,7 +92,20 @@ checkTopDef (FnDef returnType (Ident name) args block) = do
     when (not funReturned && returnType /= Void) $
         reportError ("Function " ++ name ++ " may not return value")
     return $ FnDef returnType (Ident name) args typedBlock
-checkTopDef classDef @ (ClassDef (Ident name) fields) = return classDef
+checkTopDef (ClassDef (Ident name) members) = do
+    typedMembers <- forM members $ checkMember name
+    return $ ClassDef (Ident name) typedMembers
+
+checkMember :: String -> ClassMember -> Check ClassMember
+checkMember className (Method returnType (Ident methodName) args block) = do
+    beginMethod className methodName
+    forM_ args addArg
+    typedBlock  <- checkBlock block
+    methodReturned <- gets returned
+    when (not methodReturned && returnType /= Void) $
+        reportError "method may not return value"
+    return (Method returnType (Ident methodName) args typedBlock)
+checkMember _ member = return member
 
 checkBlock :: Block -> Check Block
 checkBlock (Blk stmts) = do
@@ -112,18 +142,16 @@ checkStmt (AbsLatte.Decr lval) = do
     setReturned False
     return $ AbsLatte.Decr typedLval
 checkStmt (Ret expr) = do
-    currentFunctionName <- gets currentFunction
-    currentFunction <- getFunctionType currentFunctionName
-    let (TcFun retType _) = currentFunction
+    currentFunctionType <- gets currentFunctionType
+    let (TcFun retType _) = currentFunctionType
     typedExpr <- expectType retType expr "return value"
     setReturned True
     return $ Ret typedExpr
 checkStmt VRet = do
-    currentFunctionName <- gets currentFunction
-    currentFunction <- getFunctionType currentFunctionName
-    let (TcFun retType _) = currentFunction
+    currentFunctionType <- gets currentFunctionType
+    let (TcFun retType _) = currentFunctionType
     when (retType /= TcVoid) $
-        reportError ("function " ++ currentFunctionName ++ " has to return value")
+        reportError ("function has to return value")
     setReturned False
     return VRet
 checkStmt (Cond expr stmt) = do
@@ -211,6 +239,23 @@ checkExpr (ELitNull nullType _) = do
 checkExpr (ELitInt n _) = return (ELitInt n TcInt, TcInt)
 checkExpr (ELitTrue _) = return (ELitTrue TcBool, TcBool)
 checkExpr (ELitFalse _) = return (ELitFalse TcBool, TcBool)
+checkExpr (EMethod lval (Ident methodName) args _) = do
+    (typedLVal, lvalType) <- checkLVal lval
+    case lvalType of
+        TcClass className -> do
+            methodType <- getMethodType className methodName
+            let fullName = className ++ "." ++ methodName
+            let (TcFun retType methodArgTypes) = methodType
+            when ((length args) /= (length methodArgTypes)) $
+                reportError ("Incorrect number of arguments for method " ++ fullName)
+            checkedArgs <- forM args checkExpr
+            let typedArgs = map fst checkedArgs
+            let argTypes  = map snd checkedArgs
+            when (argTypes /= methodArgTypes) $ reportError
+                ("Argument types for method " ++ fullName ++ " does not match")
+            return (EMethod typedLVal (Ident methodName) typedArgs retType,
+                retType)
+        _ -> reportError "Methods can only be called for object"
 checkExpr (EApp (Ident funName) args _) = do
     funType <- getFunctionType funName
     let (TcFun retType funArgTypes) = funType
@@ -279,7 +324,25 @@ checkExpr (EOr lhs rhs _) = do
     return (EOr typedLhs typedRhs TcBool, TcBool)
 
 beginFunction :: String -> Check ()
-beginFunction name = modify $ \s -> s { currentFunction = name, variables = [], innerVariables = [] }
+beginFunction name = do
+    functionType <- getFunctionType name
+    modify $ \s -> s {
+        currentFunctionType = functionType,
+        currentFunctionName = name,
+        variables = [],
+        innerVariables = []
+    }
+
+beginMethod :: String -> String -> Check ()
+beginMethod className methodName = do
+    methodType <- getMethodType className methodName
+    fields <- getClassFields className
+    modify $ \s -> s {
+        currentFunctionType = methodType,
+        currentFunctionName = className ++ "." ++ methodName,
+        variables = fields,
+        innerVariables = []
+    }
 
 -- Constant evaluation (only boolean for now)
 
@@ -307,13 +370,13 @@ addFunction name funType =  do
         functions = (name, funType):functions
     }
 
-addClass :: String -> ClassFields -> Check ()
-addClass name fields =  do
+addClass :: String -> ClassFields -> ClassMethods -> Check ()
+addClass name fields methods =  do
     classes <- gets classes
     when (lookup name classes /= Nothing)
         (reportError ("multiple definitions of class " ++ name))
     modify $ \s -> s {
-        classes = (name, fields):classes
+        classes = (name, (fields, methods)):classes
     }
 
 getFunctionType :: String -> Check TcType
@@ -326,12 +389,30 @@ getFunctionType name = do
                 Just funType -> return funType
                 Nothing      -> reportError $ "Unkown function " ++ name
 
+getMethodType :: String -> String -> Check TcType
+getMethodType className methodName = do
+    methods <- getClassMethods className
+    case lookup methodName methods of
+        Just methodType -> return methodType
+        Nothing         -> reportError ("Class " ++ className ++ " has no method " ++
+            methodName)
+
 getClassFields :: String -> Check [(String, TcType)]
 getClassFields className = do
+    (ClassFields classFields, _) <- getClassMembers className
+    return classFields
+
+getClassMethods :: String -> Check [(String, TcType)]
+getClassMethods className = do
+    (_, ClassMethods classMethods) <- getClassMembers className
+    return classMethods
+
+getClassMembers :: String -> Check (ClassFields, ClassMethods)
+getClassMembers className = do
     classes <- gets classes
     case lookup className classes of
         Nothing          -> reportError ("Unknown class " ++ className)
-        Just (ClassFields classFields) -> return classFields
+        Just members -> return members
 
 getFieldType :: TcType -> String -> Check TcType
 getFieldType (TcArr _) "length" = return TcInt

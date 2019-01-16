@@ -464,7 +464,7 @@ getClassFields :: String -> Generate [(String, TcType)]
 getClassFields className = do
     classes <- gets classes
     case lookup className classes of
-        Just (TypeChecker.ClassFields classFields) -> return classFields
+        Just ((TypeChecker.ClassFields classFields), _) -> return classFields
 
 mulOpToBinOp :: MulOp -> BinOpType
 mulOpToBinOp AbsLatte.Times = Ir.Mul

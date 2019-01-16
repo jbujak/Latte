@@ -1,0 +1,8 @@
+class c {
+    int a() {}
+}
+int main() {
+    c obj = new c;
+    obj.b();
+    return 0;
+}
