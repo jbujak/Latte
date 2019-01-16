@@ -6,7 +6,11 @@ Prog.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
-ClassDef.  TopDef ::= "class" Ident "{" [ClassMember] "}" ;
+ClassDef.  TopDef ::= "class" Ident ClassExt "{" [ClassMember] "}" ;
+
+Extends.   ClassExt ::= "extends" Ident ;
+
+NoExtend.  ClassExt ::= "" ;
 
 separator nonempty TopDef "" ;
 

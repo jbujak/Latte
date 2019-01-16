@@ -16,12 +16,13 @@ data CheckState = State {
     variables :: [(String, TcType)],
     innerVariables :: [(String)],
     returned :: Bool,
-    classes :: Classes
+    classes :: Classes,
+    superclasses :: [(String, String)]
 }
 
 type Classes = [(String, (ClassFields, ClassMethods))]
 data ClassFields = ClassFields [(String, TcType)] deriving Eq
-data ClassMethods = ClassMethods [(String, TcType)] deriving Eq
+data ClassMethods = ClassMethods [(String, (TcType, String))] deriving Eq
 
 type Check a = (StateT CheckState (Either String)) a
 
@@ -41,7 +42,8 @@ emptyCheckState = State {
     variables = [],
     innerVariables = [],
     returned = False,
-    classes = []
+    classes = [],
+    superclasses = []
 }
 
 
@@ -50,6 +52,7 @@ emptyCheckState = State {
 checkProgram :: Program -> Check Program
 checkProgram (Prog topdefs) = do
     forM_ topdefs addTopDef
+    extendClasses
     typedTopDefs <- forM topdefs checkTopDef
     return $ Prog typedTopDefs
 
@@ -58,11 +61,13 @@ addTopDef (FnDef returnType (Ident name) args _) = do
     argsTypes    <- forM args (\(Ar argType _) -> (typeToTcType argType))
     returnTcType <- typeToTcType returnType
     addFunction name (TcFun returnTcType argsTypes)
-addTopDef (ClassDef (Ident name) members) = do
+addTopDef (ClassDef (Ident className) extends members) = do
     membersTypes  <- forM members memberToClassField
     let fieldsTypes  = filter isField membersTypes
     let methodsTypes = filter isMethod membersTypes
-    addClass name (ClassFields fieldsTypes) (ClassMethods methodsTypes)
+    let methodsTypesFilled = map (\(methodName, methodType) -> (methodName, (methodType, className))) methodsTypes
+    addClass className (ClassFields fieldsTypes) (ClassMethods methodsTypesFilled)
+    addSuperclass className extends
     return ()
 
 memberToClassField :: ClassMember -> Check (String, TcType)
@@ -81,6 +86,26 @@ isField (_, _) = True
 isMethod :: (String, TcType) -> Bool
 isMethod (_, (TcFun _ _ )) = True
 isMethod (_, _) = False
+
+extendClasses :: Check ()
+extendClasses = do
+    classes <- gets classes
+    forM_ classes $ \(className, _) -> extendClass className
+    
+extendClass :: String -> Check ()
+extendClass className = do
+    maybeSuperclass <- getSuperclass className
+    case maybeSuperclass of
+        Nothing         -> return ()
+        Just superclass -> do
+            extendClass superclass
+            superclassFields  <- getClassFields  superclass
+            superclassMethods <- getClassMethods superclass
+            classFields  <- getClassFields  className
+            classMethods <- getClassMethods className
+            replaceClass className
+                (ClassFields  $ superclassFields  ++ classFields)
+                (ClassMethods $ superclassMethods ++ classMethods)
     
 
 checkTopDef :: TopDef -> Check TopDef
@@ -92,9 +117,9 @@ checkTopDef (FnDef returnType (Ident name) args block) = do
     when (not funReturned && returnType /= Void) $
         reportError "function may not return value"
     return $ FnDef returnType (Ident name) args typedBlock
-checkTopDef (ClassDef (Ident name) members) = do
+checkTopDef (ClassDef (Ident name) extends members) = do
     typedMembers <- forM members $ checkMember name
-    return $ ClassDef (Ident name) typedMembers
+    return $ ClassDef (Ident name) extends typedMembers
 
 checkMember :: String -> ClassMember -> Check ClassMember
 checkMember className (Method returnType (Ident methodName) args block) = do
@@ -257,7 +282,7 @@ checkExpr (EMethod lval (Ident methodName) args _) = do
             let typedArgs = map fst checkedArgs
             let argTypes  = map snd checkedArgs
             when (argTypes /= methodArgTypes) $ reportError
-                ("Argument types for method " ++ fullName ++ " does not match")
+                ("argument types for method " ++ fullName ++ " does not match")
             return (EMethod typedLVal (Ident methodName) typedArgs retType,
                 retType)
         _ -> reportError "methods can only be called for object"
@@ -398,8 +423,8 @@ getMethodType :: String -> String -> Check TcType
 getMethodType className methodName = do
     methods <- getClassMethods className
     case lookup methodName methods of
-        Just methodType -> return methodType
-        Nothing         -> reportError ("Class " ++ className ++ " has no method " ++
+        Just (methodType, _) -> return methodType
+        Nothing         -> reportError ("class " ++ className ++ " has no method " ++
             methodName)
 
 getClassFields :: String -> Check [(String, TcType)]
@@ -407,7 +432,7 @@ getClassFields className = do
     (ClassFields classFields, _) <- getClassMembers className
     return classFields
 
-getClassMethods :: String -> Check [(String, TcType)]
+getClassMethods :: String -> Check [(String, (TcType, String))]
 getClassMethods className = do
     (_, ClassMethods classMethods) <- getClassMembers className
     return classMethods
@@ -416,7 +441,7 @@ getClassMembers :: String -> Check (ClassFields, ClassMethods)
 getClassMembers className = do
     classes <- gets classes
     case lookup className classes of
-        Nothing          -> reportError ("Unknown class " ++ className)
+        Nothing          -> reportError ("unknown class " ++ className)
         Just members -> return members
 
 getFieldType :: TcType -> String -> Check TcType
@@ -424,7 +449,7 @@ getFieldType (TcArr _) "length" = return TcInt
 getFieldType (TcClass className) fieldName = do
     classFields <- getClassFields className
     case lookup fieldName classFields of
-        Nothing        -> reportError ("Unknown field "  ++ fieldName)
+        Nothing        -> reportError ("unknown field "  ++ fieldName)
         Just fieldType -> return fieldType
 getFieldType _ fieldName = reportError ("unknown field "  ++ fieldName)
 
@@ -458,6 +483,19 @@ addVariable name varType =  do
             innerVariables = name:innerVariables
         }
 
+addSuperclass :: String -> ClassExt -> Check ()
+addSuperclass className (Extends (Ident superclass)) = do
+    superclasses <- gets superclasses
+    modify $ \s -> s {
+        superclasses = (className, superclass):superclasses
+    }
+addSuperclass className NoExtend = return ()
+
+getSuperclass :: String -> Check (Maybe String)
+getSuperclass className = do
+    superclasses <- gets superclasses
+    return $ lookup className superclasses
+
 setReturned :: Bool -> Check ()
 setReturned ret = modify $ \s -> s { returned = ret}
 
@@ -466,16 +504,25 @@ getVariableType name = do
     variables <- gets variables
     case lookup name variables of
         Just varType -> return varType
-        Nothing      -> reportError $ "Unkown variable " ++ name
+        Nothing      -> reportError $ "unkown variable " ++ name
 
 expectType :: TcType -> Expr -> String -> Check Expr
 expectType expectedType expr what = do
     checkedExpr <- checkExpr expr
     let typedExpr  = fst checkedExpr
     let actualType = snd checkedExpr
-    when (expectedType /= actualType) $ reportError ("Incorrect type of " ++ what ++
+    typeOk <- canAssign expectedType actualType
+    when (not typeOk) $ reportError ("incorrect type of " ++ what ++
         ": expected " ++ (show expectedType) ++ ", got " ++ (show actualType))
     return typedExpr
+
+replaceClass :: String -> ClassFields -> ClassMethods -> Check ()
+replaceClass className fields methods = do
+    thisClass <- gets classes
+    modify $ \s -> s { classes = replaceElemKey className (fields, methods) (classes s) }
+
+replaceElemKey :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+replaceElemKey key val list = (key, val):(filter (\x -> fst x /= key) list)
 
 typeToTcType :: Type -> Check TcType
 typeToTcType Int  = return TcInt
@@ -487,6 +534,16 @@ typeToTcType (Arr arrType) = do
     return $ TcArr arrTcType
 typeToTcType (Class (Ident className)) =do
     return $ TcClass className
+
+canAssign :: TcType -> TcType -> Check Bool
+canAssign (TcClass leftClass) (TcClass rightClass) = if leftClass == rightClass
+    then return True
+    else do
+        rightSuperclass <- getSuperclass rightClass
+        case rightSuperclass of
+            Nothing         -> return False
+            Just superclass -> canAssign (TcClass leftClass) (TcClass superclass)
+canAssign leftType rightType = return $ leftType == rightType
 
 reportError :: String -> StateT CheckState (Either String) b
 reportError msg = StateT {

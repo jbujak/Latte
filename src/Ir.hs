@@ -120,7 +120,7 @@ generateTopDef (FnDef _ (Ident name) args (Blk stmts)) = do
     generateArgs args
     forM_ stmts generateStmt
     endFunction
-generateTopDef (ClassDef (Ident className) members) = do
+generateTopDef (ClassDef (Ident className) extends members) = do
     classes <- gets classes
     modify $ \s -> s { currentClass = Just className }
     forM_ members $ generateClassMember className
@@ -228,7 +228,7 @@ generateExpr (EMethod lval (Ident methodName) args _) = do
     obj <- generateGetLVal lval
     argsLocals <- forM args generateExpr
     retLocal <- newLocal
-    let funName = getMethodName className methodName
+    funName <- getMethodName className methodName
     printCommand $ Call retLocal funName argsLocals (Just obj)
     return retLocal
 generateExpr (EApp (Ident funName) args _) = do
@@ -395,7 +395,8 @@ generateGetLVal (Var (Ident name) _) = do
 
 startMethod :: String -> String -> Generate ()
 startMethod className methodName = do
-    startFunction $ getMethodName className methodName
+    functionName <- getMethodName className methodName
+    startFunction functionName
     thisLocal <- newLocal
     currentFunction <- getCurrentFunction
     modify $ \s -> s {
@@ -513,6 +514,13 @@ getClassFields className = do
     case lookup className classes of
         Just ((ClassFields classFields), _) -> return classFields
 
+getClassMethods :: String -> Generate [(String, (TcType, String))]
+getClassMethods className = do
+    classes <- gets classes
+    case lookup className classes of
+        Just (_, (ClassMethods classMethods)) -> return classMethods
+
+
 getThis :: Generate Local
 getThis = do
     currentFunction <- getCurrentFunction
@@ -526,8 +534,11 @@ getThisFieldNo fieldName = do
     fieldNo <- getFieldNo (TcClass className) fieldName
     return fieldNo
 
-getMethodName :: String -> String -> String
-getMethodName className methodName = "_latte_" ++ className ++ "__" ++ methodName
+getMethodName :: String -> String -> Generate String
+getMethodName className methodName = do
+    methods <- getClassMethods className
+    let (Just (_, originalClassName)) = lookup methodName methods
+    return ("_latte_" ++ originalClassName ++ "__" ++ methodName)
 
 mulOpToBinOp :: MulOp -> BinOpType
 mulOpToBinOp AbsLatte.Times = Ir.Mul
